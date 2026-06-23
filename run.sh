@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 #
-# One entrypoint to run the validator. Bootstraps a local venv on first run,
-# then forwards all args to the CLI.
+# One entrypoint to run the validator. Installs any missing Python deps into the
+# current environment, then forwards all args to the CLI.
 #
 #   ./run.sh                 # one-shot; exits non-zero on a MISMATCH
 #   ./run.sh --fail-only     # one-shot, hide OK rows
 #   ./run.sh --watch         # run as a service (re-checks each interval)
 #   ./run.sh --json          # machine-readable output
-#   ./run.sh --docker ...    # run via docker compose instead of the local venv
+#   ./run.sh --docker ...    # run via docker compose instead
 #
-# Reads ./\.env for ORACLE_* creds and VALIDATOR_* settings (copy .env.example).
+# Override the interpreter with $PYTHON. Reads ./\.env for ORACLE_* creds and
+# VALIDATOR_* settings (copy .env.example).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -22,19 +23,16 @@ if [[ "${1:-}" == "--docker" ]]; then
   exec docker compose run --rm validator "$@"
 fi
 
-# --- local venv -------------------------------------------------------------
-PY=python3
-VENV=.venv
+# --- deps -------------------------------------------------------------------
+PY="${PYTHON:-python3}"
 
-if [[ ! -d "$VENV" ]]; then
-  echo "[run.sh] creating virtualenv in $VENV …" >&2
-  "$PY" -m venv "$VENV"
-  "$VENV/bin/pip" install --quiet --upgrade pip
-  "$VENV/bin/pip" install --quiet -r requirements.txt
+if ! "$PY" -c "import oracledb, yaml" 2>/dev/null; then
+  echo "[run.sh] installing dependencies …" >&2
+  "$PY" -m pip install --quiet --disable-pip-version-check -r requirements.txt
 fi
 
 if [[ ! -f .env ]]; then
   echo "[run.sh] WARNING: no .env found — copy .env.example to .env and fill in creds." >&2
 fi
 
-exec "$VENV/bin/python" -m validator.cli "$@"
+exec "$PY" -m validator.cli "$@"

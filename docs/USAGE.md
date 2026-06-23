@@ -100,7 +100,8 @@ validator uses the per-PDB `v$con_sysstat`/`CDB_*` queries and matches the
 
 ### Local (`run.sh`)
 
-`run.sh` bootstraps a venv on first run, then forwards args to the CLI:
+`run.sh` installs any missing deps on first run, then forwards args to the CLI
+(override the interpreter with `$PYTHON`):
 
 ```bash
 ./run.sh                  # one-shot DB check; exits non-zero on a MISMATCH
