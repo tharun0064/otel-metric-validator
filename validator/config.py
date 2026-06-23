@@ -1,0 +1,141 @@
+"""Environment-driven configuration for the validator.
+
+Reads from the process environment. Optionally pre-loads a `.env` file (simple
+KEY=VALUE format, no interpolation) without overriding values already set in the
+real environment.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+
+def load_dotenv(path: str | os.PathLike[str]) -> None:
+    """Minimal .env loader: KEY=VALUE per line, '#' comments, quotes stripped.
+
+    Existing environment variables take precedence (we never overwrite them),
+    so an explicit `export FOO=bar` always wins over the file.
+    """
+    p = Path(path)
+    if not p.is_file():
+        return
+    for raw in p.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+class ConfigError(ValueError):
+    """Raised when required configuration is missing or invalid."""
+
+
+@dataclass(frozen=True)
+class Config:
+    # Oracle connection
+    host: str
+    port: int
+    service: str
+    user: str
+    password: str
+
+    # Ingest source
+    ingest_path: str
+    ingest_format: str  # "otlp-json" | "debug-log"
+
+    # Behaviour
+    container_mode: str  # "pdb" | "cdb"
+    tol_gauge: float
+    tol_counter: float
+    abs_epsilon: float
+    watch_interval: float
+
+    # New Relic NRQL ingest check (optional; required only with --check-ingest)
+    nr_api_key: str
+    nr_account_id: str
+    nr_nerdgraph_url: str
+
+    @property
+    def dsn(self) -> str:
+        return f"{self.host}:{self.port}/{self.service}"
+
+    @property
+    def is_cdb(self) -> bool:
+        return self.container_mode == "cdb"
+
+    def require_nr(self) -> None:
+        """Validate NR settings; call only when the ingest check is requested."""
+        missing = []
+        if not self.nr_api_key:
+            missing.append("NEW_RELIC_API_KEY")
+        if not self.nr_account_id:
+            missing.append("NEW_RELIC_ACCOUNT_ID")
+        if missing:
+            raise ConfigError(
+                "--check-ingest needs: " + ", ".join(missing) + "  (see .env.example)"
+            )
+
+
+_REQUIRED = ("ORACLE_HOST", "ORACLE_SERVICE", "ORACLE_MONITORING_USER", "ORACLE_MONITORING_PASSWORD")
+_VALID_FORMATS = ("otlp-json", "debug-log")
+_VALID_MODES = ("pdb", "cdb")
+
+
+def load_config(env: dict[str, str] | None = None) -> Config:
+    """Build a Config from `env` (defaults to os.environ). Fail fast on errors."""
+    e = os.environ if env is None else env
+
+    missing = [k for k in _REQUIRED if not e.get(k)]
+    if missing:
+        raise ConfigError(
+            "missing required environment variables: " + ", ".join(missing)
+            + "  (see .env.example)"
+        )
+
+    fmt = e.get("VALIDATOR_INGEST_FORMAT", "otlp-json").strip().lower()
+    if fmt not in _VALID_FORMATS:
+        raise ConfigError(f"VALIDATOR_INGEST_FORMAT must be one of {_VALID_FORMATS}, got {fmt!r}")
+
+    mode = e.get("VALIDATOR_CONTAINER_MODE", "pdb").strip().lower()
+    if mode not in _VALID_MODES:
+        raise ConfigError(f"VALIDATOR_CONTAINER_MODE must be one of {_VALID_MODES}, got {mode!r}")
+
+    ingest_path = e.get("VALIDATOR_INGEST_PATH", "").strip()
+    if not ingest_path:
+        raise ConfigError("VALIDATOR_INGEST_PATH is required (path to the collector's metric output)")
+
+    def _float(key: str, default: float) -> float:
+        try:
+            return float(e.get(key, default))
+        except (TypeError, ValueError):
+            raise ConfigError(f"{key} must be a number, got {e.get(key)!r}")
+
+    def _int(key: str, default: int) -> int:
+        try:
+            return int(e.get(key, default))
+        except (TypeError, ValueError):
+            raise ConfigError(f"{key} must be an integer, got {e.get(key)!r}")
+
+    return Config(
+        host=e["ORACLE_HOST"].strip(),
+        port=_int("ORACLE_PORT", 1521),
+        service=e["ORACLE_SERVICE"].strip(),
+        user=e["ORACLE_MONITORING_USER"].strip(),
+        password=e["ORACLE_MONITORING_PASSWORD"],
+        ingest_path=ingest_path,
+        ingest_format=fmt,
+        container_mode=mode,
+        tol_gauge=_float("VALIDATOR_TOLERANCE_GAUGE", 0.02),
+        tol_counter=_float("VALIDATOR_TOLERANCE_COUNTER", 0.05),
+        abs_epsilon=_float("VALIDATOR_ABS_EPSILON", 1.0),
+        watch_interval=_float("VALIDATOR_WATCH_INTERVAL", 30.0),
+        nr_api_key=e.get("NEW_RELIC_API_KEY", "").strip(),
+        nr_account_id=e.get("NEW_RELIC_ACCOUNT_ID", "").strip(),
+        nr_nerdgraph_url=e.get("NEW_RELIC_NERDGRAPH_URL", "https://api.newrelic.com/graphql").strip(),
+    )

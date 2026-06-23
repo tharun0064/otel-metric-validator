@@ -1,0 +1,28 @@
+# Merge this into your collector config so the validator has a clean, unambiguous
+# input. Mount the output path to somewhere the validator can read, then set
+# VALIDATOR_INGEST_PATH to it (VALIDATOR_INGEST_FORMAT=otlp-json).
+
+exporters:
+  file/validator:
+    path: /shared/otel-metrics.json   # newline-delimited OTLP JSON
+    # rotation keeps the file from growing unbounded during a long --watch run
+    rotation:
+      max_megabytes: 10
+      max_backups: 2
+
+service:
+  pipelines:
+    metrics/oracle:                   # add the exporter alongside your existing ones
+      exporters: [otlphttp, file/validator]
+
+# ---------------------------------------------------------------------------
+# Alternative (VALIDATOR_INGEST_FORMAT=debug-log): use the debug exporter and
+# capture stdout, e.g.  `docker logs otel-collector > /shared/collector.log`.
+#
+# exporters:
+#   debug:
+#     verbosity: detailed
+# service:
+#   pipelines:
+#     metrics/oracle:
+#       exporters: [otlphttp, debug]

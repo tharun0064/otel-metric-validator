@@ -1,0 +1,32 @@
+# Runs the validator as a container. It needs two things from your environment:
+#   1. The collector's OTLP-JSON output file  -> mounted at /shared
+#   2. Network access to Oracle               -> set ORACLE_HOST in .env
+#
+# Point your collector's file exporter at  ./shared/otel-metrics.json
+# (see collector/file-exporter.partial.yaml), then:  docker compose up
+#
+# One-shot instead of watch:  docker compose run --rm validator
+services:
+  validator:
+    build: .
+    container_name: otel-metric-validator
+    env_file: .env
+    environment:
+      # inside the container the ingest file lives under /shared regardless of
+      # what VALIDATOR_INGEST_PATH says on the host
+      VALIDATOR_INGEST_PATH: /shared/otel-metrics.json
+    volumes:
+      # shared file written by the collector's file exporter
+      - ./shared:/shared:ro
+    extra_hosts:
+      # lets ORACLE_HOST=host.docker.internal reach a DB on the host machine
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+# If your collector + Oracle run in another compose project, attach this service
+# to their network instead of using host.docker.internal, e.g.:
+#
+# networks:
+#   default:
+#     external: true
+#     name: <that-project>_default

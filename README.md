@@ -42,9 +42,8 @@ and point `VALIDATOR_INGEST_PATH` at the JSON file it writes.
 
 ## Run — `./run.sh`
 
-Install the dependencies once (`pip install -r requirements.txt`, in whatever
-environment you prefer). `run.sh` is the single entrypoint — it runs with the
-Python on your PATH (override with `$PYTHON`) and forwards all arguments to the CLI:
+`run.sh` is the single entrypoint. It bootstraps a local virtualenv on first run
+(installs `requirements.txt`), then forwards all arguments to the CLI:
 
 ```bash
 ./run.sh                 # one-shot; prints a table, exits non-zero on any MISMATCH
@@ -68,7 +67,7 @@ asks NRDB (NerdGraph NRQL) for the corresponding aggregate:
 Needs `NEW_RELIC_API_KEY` + `NEW_RELIC_ACCOUNT_ID` (and `otlp-json` format). See
 §11 of [`specs/SPEC.md`](specs/SPEC.md).
 
-(Equivalent without the wrapper: `python -m validator.cli [...]`.)
+(Equivalent without the wrapper: `python -m validator.cli [...]` inside the venv.)
 
 ## Run — Docker
 
