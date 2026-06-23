@@ -36,7 +36,10 @@ The mapping mirrors, verbatim where possible:
 | metric type / unit / attributes / enum values | `…/nroracledbreceiver/metadata.yaml` | per-metric |
 | emitted instrumentation scope | `…/internal/metadata/generated_status.go` | `ScopeName` |
 
-`ScopeName` = `github.com/newrelic-forks/opentelemetry-collector-contrib/receiver/nroracledbreceiver`.
+Fork `ScopeName` = `github.com/newrelic-forks/opentelemetry-collector-contrib/receiver/nroracledbreceiver`;
+upstream emits `…/receiver/oracledbreceiver`. The validator filters emitted
+metrics by the **substring `oracledbreceiver`** (`metricmap.ScopeMatches`), so it
+works against either build; an empty scope name is also accepted.
 
 ## 3. Data model
 

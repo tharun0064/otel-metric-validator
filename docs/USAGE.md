@@ -36,8 +36,8 @@ out of the box — no Oracle Instant Client required.
 - Go 1.23+ (for the local run) **or** Docker (for the container run).
 - Network access to the Oracle instance the collector monitors, as a user with
   `SELECT` on the `V$`/`DBA_` views (the receiver's monitoring user works).
-- A collector running the **`nroracledbreceiver`** fork with a **file exporter**
-  enabled (steps below).
+- A collector running the **`nroracledbreceiver`** fork (or upstream
+  `oracledbreceiver`) with a **file exporter** enabled (steps below).
 - For `--check-ingest` only: a New Relic **NerdGraph user API key** and **account id**.
 
 ---
@@ -196,7 +196,8 @@ intervals, then validate a window that's already a minute or two in the past.
 |---|---|
 | many `MISMATCH` on counters by a few % | normal scrape↔probe drift — raise `VALIDATOR_TOLERANCE_COUNTER` |
 | `MISMATCH` on a gauge | tighten/loosen `VALIDATOR_TOLERANCE_GAUGE`; confirm it's truly a gauge in `metadata.yaml` |
-| everything `MISSING_IN_DB` | wrong `VALIDATOR_CONTAINER_MODE`, or the collector's scope name differs from the fork's |
+| everything `MISSING_IN_INGEST` (DB has values, 0 series read) | the ingest file is empty/stale (collector not writing there) or its scope name doesn't contain `oracledbreceiver` — check the `[info] read N series` line |
+| everything `MISSING_IN_DB` | wrong `VALIDATOR_CONTAINER_MODE` (pdb vs cdb) |
 | `MISSING_IN_INGEST` for a metric you want | enable it in the collector's receiver config |
 | `ORA-…` / login failures on connect | wrong creds or service; for a CDB root use the `C##` common user and `VALIDATOR_CONTAINER_MODE=cdb` |
 | `INGEST_NO_DATA` | data hasn't landed yet (lag), or the NRQL window/attrs don't match — widen the window |

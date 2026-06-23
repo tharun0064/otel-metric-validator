@@ -49,6 +49,17 @@ func TestReadOTLPScopeFilter(t *testing.T) {
 	}
 }
 
+func TestReadOTLPUpstreamScopeAccepted(t *testing.T) {
+	// Upstream collectors emit …/receiver/oracledbreceiver (no "nr" prefix).
+	upstream := "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/oracledbreceiver"
+	body := line(upstream, "oracledb.executions", "sum", "", "1000", "9") + "\n"
+	p := write(t, "m.json", body)
+	got, _ := ReadOTLPJSON(p)
+	if _, ok := got[mapKey("oracledb.executions", nil)]; !ok {
+		t.Fatalf("upstream oracledbreceiver scope should be accepted: %+v", got)
+	}
+}
+
 func TestReadOTLPAttrs(t *testing.T) {
 	attr := `{"key":"oracle.db.pdb","value":{"stringValue":"PDB2"}}`
 	body := line(scope, "oracledb.executions", "sum", attr, "1000", "7") + "\n"

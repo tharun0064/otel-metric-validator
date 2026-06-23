@@ -131,7 +131,7 @@ func runOnce(cfg config.Config, opt options) ([]compare.Result, []ingestcheck.Re
 		len(emitted), cfg.IngestPath, len(probe.Expected))
 	if len(emitted) == 0 {
 		fmt.Fprintf(os.Stderr, "[info] no metrics parsed from the ingest file — check the collector "+
-			"is writing OTLP JSON to that path (format=%s, scope must contain nroracledbreceiver)\n", cfg.IngestFormat)
+			"is writing OTLP JSON to that path (format=%s, scope must contain oracledbreceiver)\n", cfg.IngestFormat)
 	}
 
 	results := compare.Compare(probe.Expected, emitted, cfg)

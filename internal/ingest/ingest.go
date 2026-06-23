@@ -113,7 +113,7 @@ func iterOTLP(line []byte, fn func(Emitted)) {
 	}
 	for _, rm := range obj.ResourceMetrics {
 		for _, sm := range rm.ScopeMetrics {
-			if sm.Scope.Name != "" && !strings.Contains(sm.Scope.Name, metricmap.SCOPE) {
+			if !metricmap.ScopeMatches(sm.Scope.Name) {
 				continue
 			}
 			for _, m := range sm.Metrics {

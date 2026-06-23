@@ -20,8 +20,19 @@ import (
 	"strings"
 )
 
-// SCOPE is the collector instrumentation scope the receiver emits under.
+// SCOPE is the fork's instrumentation scope name.
 const SCOPE = "github.com/newrelic-forks/opentelemetry-collector-contrib/receiver/nroracledbreceiver"
+
+// scopeMarker is the substring shared by both the fork's scope
+// (…/nroracledbreceiver) and upstream's (…/oracledbreceiver), so the validator
+// works against either build.
+const scopeMarker = "oracledbreceiver"
+
+// ScopeMatches reports whether an emitted scope name belongs to the oracle
+// receiver (fork or upstream). An empty scope name matches (best-effort).
+func ScopeMatches(name string) bool {
+	return name == "" || strings.Contains(name, scopeMarker)
+}
 
 // Value types: SUM is a cumulative monotonic counter (counter tolerance), GAUGE
 // is a level snapshot (gauge tolerance).
