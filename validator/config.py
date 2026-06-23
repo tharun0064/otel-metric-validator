@@ -8,12 +8,23 @@ real environment.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+# An inline comment starts at the first '#' that follows whitespace, matching the
+# usual dotenv convention. A '#' with no preceding space is kept as part of the
+# value (e.g. passwords ending in '##', or a user like 'C##DB_MONITOR').
+_INLINE_COMMENT = re.compile(r"\s#")
 
 
 def load_dotenv(path: str | os.PathLike[str]) -> None:
     """Minimal .env loader: KEY=VALUE per line, '#' comments, quotes stripped.
+
+    - Full-line comments (line starts with '#') are ignored.
+    - For unquoted values, a trailing inline comment (whitespace + '#') is
+      stripped; a '#' not preceded by whitespace stays in the value.
+    - Quoted values are taken verbatim between the quotes (no comment stripping).
 
     Existing environment variables take precedence (we never overwrite them),
     so an explicit `export FOO=bar` always wins over the file.
@@ -27,7 +38,16 @@ def load_dotenv(path: str | os.PathLike[str]) -> None:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
-        value = value.strip().strip('"').strip("'")
+        value = value.strip()
+        if value[:1] in ('"', "'"):
+            quote = value[0]
+            end = value.find(quote, 1)
+            value = value[1:end] if end != -1 else value[1:]
+        else:
+            m = _INLINE_COMMENT.search(value)
+            if m:
+                value = value[: m.start()]
+            value = value.strip()
         if key and key not in os.environ:
             os.environ[key] = value
 
