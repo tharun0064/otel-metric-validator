@@ -168,6 +168,14 @@ Value = `DATA_DICTIONARY_HIT_RATIO`.
 `metric_name` selects the metric; `value` is read as-is (Oracle computes it inside
 the view) except where noted. `oracle.db.pdb=PDB_NAME` when the CDB query returns it.
 
+**CDB two-pass (matches the receiver):** in CDB mode the validator runs
+`v$con_sysmetric` (per-PDB) **and** `v$sysmetric`, emitting from `v$sysmetric` only
+the `metric_name`s not already returned by `v$con_sysmetric` (with no pdb attr).
+Instance-scoped metrics — Host CPU Utilization, Library Cache Hit Ratio, Shared
+Pool Free %, Redo Allocation Hit Ratio — live only in `v$sysmetric`, so they arrive
+via the second pass. (`dbprobe` special-cases this; `metricmap.ExpectedForSysmetricCDB`
+does the dedup.)
+
 | metric_name | metric | transform / attrs |
 |---|---|---|
 | `Buffer Cache Hit Ratio` | `oracledb.buffer_cache.utilization` | — |

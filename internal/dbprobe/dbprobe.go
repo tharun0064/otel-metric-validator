@@ -40,8 +40,17 @@ func Probe(cfg config.Config) (Result, error) {
 
 	res := Result{Expected: map[string]metricmap.Expected{}, ProbeTime: time.Now()}
 	for _, key := range metricmap.AllQueryKeys() {
-		query := metricmap.QuerySQL(key, cfg.IsCDB())
-		rows, err := runQuery(db, query)
+		// In CDB mode the receiver runs sysmetric as two passes: v$con_sysmetric
+		// (per-PDB) plus v$sysmetric for any metric_name not seen there (no pdb).
+		if key == "sysmetric" && cfg.IsCDB() {
+			conRows := runOrLog(db, metricmap.QuerySQL("sysmetric", true), "sysmetric (v$con_sysmetric)", &res)
+			sysRows := runOrLog(db, metricmap.QuerySQL("sysmetric", false), "sysmetric (v$sysmetric)", &res)
+			for _, exp := range metricmap.ExpectedForSysmetricCDB(conRows, sysRows) {
+				res.Expected[exp.Key()] = exp
+			}
+			continue
+		}
+		rows, err := runQuery(db, metricmap.QuerySQL(key, cfg.IsCDB()))
 		if err != nil {
 			res.Errors = append(res.Errors, fmt.Sprintf("query %q failed: %v", key, err))
 			continue
@@ -51,6 +60,16 @@ func Probe(cfg config.Config) (Result, error) {
 		}
 	}
 	return res, nil
+}
+
+// runOrLog runs a query, appending any error to the result and returning nil rows.
+func runOrLog(db *sql.DB, query, label string, res *Result) []map[string]any {
+	rows, err := runQuery(db, query)
+	if err != nil {
+		res.Errors = append(res.Errors, fmt.Sprintf("query %q failed: %v", label, err))
+		return nil
+	}
+	return rows
 }
 
 // runQuery executes SQL and returns rows as maps with UPPERCASE column names.

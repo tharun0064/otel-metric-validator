@@ -158,6 +158,44 @@ func TestSysmetricDirectAndTransform(t *testing.T) {
 	}
 }
 
+func TestSysmetricCDBTwoPass(t *testing.T) {
+	// con_sysmetric has the per-PDB metric; v$sysmetric also lists it (must be
+	// deduped) plus an instance-only metric that has no pdb.
+	conRows := []map[string]any{
+		{"METRIC_NAME": "Buffer Cache Hit Ratio", "VALUE": 100.0, "PDB_NAME": "PDB2"},
+	}
+	sysRows := []map[string]any{
+		{"METRIC_NAME": "Buffer Cache Hit Ratio", "VALUE": 99.0},   // dup -> skipped
+		{"METRIC_NAME": "Host CPU Utilization (%)", "VALUE": 42.0}, // instance-only -> kept, no pdb
+	}
+	out := ExpectedForSysmetricCDB(conRows, sysRows)
+	var buffer, host *Expected
+	for i := range out {
+		switch out[i].Metric {
+		case "oracledb.buffer_cache.utilization":
+			buffer = &out[i]
+		case "oracledb.host.cpu.utilization":
+			host = &out[i]
+		}
+	}
+	if buffer == nil || buffer.Value != 100 || buffer.Attrs["oracle.db.pdb"] != "PDB2" {
+		t.Fatalf("buffer_cache should come from con_sysmetric (per-pdb): %+v", buffer)
+	}
+	if host == nil || host.Value != 42 || host.Attrs["oracle.db.pdb"] != "" {
+		t.Fatalf("host.cpu should come from v$sysmetric with no pdb: %+v", host)
+	}
+	// Buffer Cache must not be duplicated from the v$sysmetric pass.
+	n := 0
+	for _, e := range out {
+		if e.Metric == "oracledb.buffer_cache.utilization" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("buffer_cache should appear once, got %d", n)
+	}
+}
+
 func TestOSStat(t *testing.T) {
 	rows := []map[string]any{
 		{"STAT_NAME": "NUM_CPUS", "VALUE": "8"},

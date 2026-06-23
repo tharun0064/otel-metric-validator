@@ -474,6 +474,27 @@ func extractStorage(rows []map[string]any) []Expected {
 	return out
 }
 
+// ExpectedForSysmetricCDB mirrors the receiver's two-pass CDB sysmetric logic:
+// per-PDB rows from v$con_sysmetric win; v$sysmetric supplies only the metric_names
+// not seen there (instance-scoped metrics like Host CPU / Library Cache / Shared
+// Pool / Redo Allocation), recorded with no pdb attribute.
+func ExpectedForSysmetricCDB(conRows, sysRows []map[string]any) []Expected {
+	out := extractSysmetric(conRows)
+	seen := map[string]bool{}
+	for _, row := range conRows {
+		if name := asString(row["METRIC_NAME"]); name != "" {
+			seen[name] = true
+		}
+	}
+	var unseen []map[string]any
+	for _, row := range sysRows {
+		if !seen[asString(row["METRIC_NAME"])] {
+			unseen = append(unseen, row)
+		}
+	}
+	return append(out, extractSysmetric(unseen)...)
+}
+
 func extractSysmetric(rows []map[string]any) []Expected {
 	var out []Expected
 	for _, row := range rows {
