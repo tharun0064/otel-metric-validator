@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 #
-# One entrypoint to run the validator. Installs any missing Python deps into the
-# current environment, then forwards all args to the CLI.
+# One entrypoint to run the Go validator. Builds the binary, then runs it.
 #
 #   ./run.sh                 # one-shot; exits non-zero on a MISMATCH
 #   ./run.sh --fail-only     # one-shot, hide OK rows
 #   ./run.sh --watch         # run as a service (re-checks each interval)
 #   ./run.sh --json          # machine-readable output
+#   ./run.sh --check-ingest  # also verify NRDB ingest (delta) via NRQL
 #   ./run.sh --docker ...    # run via docker compose instead
 #
-# Override the interpreter with $PYTHON. Reads ./\.env for ORACLE_* creds and
-# VALIDATOR_* settings (copy .env.example).
+# Reads ./\.env for ORACLE_* creds and VALIDATOR_* settings (copy .env.example).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -23,16 +22,17 @@ if [[ "${1:-}" == "--docker" ]]; then
   exec docker compose run --rm validator "$@"
 fi
 
-# --- deps -------------------------------------------------------------------
-PY="${PYTHON:-python3}"
-
-if ! "$PY" -c "import oracledb, yaml" 2>/dev/null; then
-  echo "[run.sh] installing dependencies …" >&2
-  "$PY" -m pip install --quiet --disable-pip-version-check -r requirements.txt
+# --- local build + run ------------------------------------------------------
+if ! command -v go >/dev/null 2>&1; then
+  echo "[run.sh] Go toolchain not found on PATH. Install Go 1.23+ or use ./run.sh --docker." >&2
+  exit 2
 fi
+
+mkdir -p bin
+go build -o bin/validator ./cmd/validator
 
 if [[ ! -f .env ]]; then
   echo "[run.sh] WARNING: no .env found — copy .env.example to .env and fill in creds." >&2
 fi
 
-exec "$PY" -m validator.cli "$@"
+exec ./bin/validator "$@"

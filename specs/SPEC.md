@@ -1,9 +1,13 @@
 # otel-metric-validator — Specification
 
 This is the spec the framework implements. It defines **what** is validated and
-**how**, so the behaviour is auditable and `validator/metric_map.py` can be kept
+**how**, so the behaviour is auditable and `internal/metricmap` can be kept
 in lockstep with the receiver. If the receiver changes, update this doc and the
 map together.
+
+The framework is a standalone Go module. It connects to Oracle with the same
+driver the receiver uses (`github.com/sijms/go-ora/v2`, pure Go), so it negotiates
+Native Network Encryption without an Oracle Instant Client.
 
 ---
 
@@ -195,7 +199,7 @@ For each join key in `expected ∪ emitted`:
 | OTel only, name ∈ `COMPUTED_SKIP` | `SKIPPED` | no |
 | OTel only, otherwise | `MISSING_IN_DB` (no DB mapping) | no |
 
-**Tolerance** (`comparator._within_tolerance`):
+**Tolerance** (`compare.WithinTolerance`):
 - if `|expected| ≤ VALIDATOR_ABS_EPSILON` → pass when `|actual−expected| ≤ abs_epsilon`
   (avoids divide-by-near-zero for rare-event counters);
 - else relative: `|actual−expected| / |expected| ≤ tol`, where
@@ -232,21 +236,21 @@ minimize skew. This is inherent and reported transparently.
 
 ## 9. Module ↔ spec map
 
-| module | implements |
+| package | implements |
 |---|---|
-| `validator/config.py` | §8 |
-| `validator/metric_map.py` | §2, §4, §5 (`COMPUTED_SKIP`), `value_type_of` (§11) |
-| `validator/db_probe.py` | §4 execution (run SQL, last-column-wins, build `Expected`) |
-| `validator/ingest_reader.py` | §6, plus `read_otlp_series` endpoints (§11) |
-| `validator/comparator.py` (+ `comparator_status.py`) | §7 |
-| `validator/nrql_probe.py` | §11 NerdGraph client + NRQL builders + parser |
-| `validator/ingest_check.py` | §11 delta/latest verification |
-| `validator/report.py` | §7 + §11 rendering |
-| `validator/cli.py` | run modes + exit codes (§7, §11) |
+| `internal/config` | §8 (env load, `.env`, inline-comment handling) |
+| `internal/metricmap` | §2, §4, §5 (`ComputedSkip`), `ValueTypeOf` (§11) |
+| `internal/dbprobe` | §4 execution (go-ora `sql.Open`, run SQL, last-column-wins, build `Expected`) |
+| `internal/ingest` | §6, plus `ReadOTLPSeries` endpoints (§11) |
+| `internal/compare` | §7 (statuses + tolerance) |
+| `internal/nrql` | §11 NerdGraph client + NRQL builders + parser |
+| `internal/ingestcheck` | §11 delta/latest verification |
+| `internal/report` | §7 + §11 rendering |
+| `cmd/validator` | run modes + exit codes (§7, §11) |
 
 ## 10. Invariants / tests
 
-`tests/` assert the spec without a DB or collector:
+`*_test.go` (run with `go test ./...`) assert the spec without a DB or collector:
 - `cpu_time` transform = `÷100`; counters untransformed; `pga_memory` is gauge.
 - IO/SQL\*Net fixed attributes; session/resource-limit/tablespace/SGA extraction.
 - OTLP-JSON parsing (gauge & sum, latest-wins, foreign-scope filtered) and
@@ -286,13 +290,13 @@ query `SELECT latest(<metric>) … SINCE t0 UNTIL tN+1s`, comparing within
 
 **Inputs.** Requires `VALIDATOR_INGEST_FORMAT=otlp-json` (needs per-point
 timestamps; the debug-log path is not supported) and NR creds (§8). Series
-endpoints come from `ingest_reader.read_otlp_series` (min/max `timeUnixNano` per
+endpoints come from `ingest.ReadOTLPSeries` (min/max `timeUnixNano` per
 `(metric, attrs)`).
 
-**Transport.** `nrql_probe.NrqlClient` POSTs a NerdGraph query
+**Transport.** `nrql.Client` POSTs a NerdGraph query
 (`{ actor { account(id) { nrql(query:"…"){ results } } } }`) with header
-`API-Key`, using only the stdlib. `parse_nrql_scalar` returns the single numeric
-result (or `None` when there are no rows).
+`API-Key`, using only `net/http`. `nrql.ParseScalar` returns the single numeric
+result (or `nil` when there are no rows).
 
 **Statuses / exit code.**
 

@@ -1,6 +1,6 @@
 # otel-metric-validator
 
-Cross-checks the Oracle metrics an OpenTelemetry collector **ingests** (via the
+Cross-checks the Oracle metrics an OpenTelemetry collector **emits** (via the
 `nroracledbreceiver` fork) against **ground truth** obtained by running the
 receiver's *own* monitoring SQL directly against the database — and flags any
 disagreement.
@@ -14,6 +14,10 @@ disagreement.
 It catches receiver regressions in query, column mapping, or unit transforms
 (e.g. `cpu_time` must be divided by 100 — "tens of ms" → seconds).
 
+A standalone **Go** module. It connects to Oracle with the **same driver the
+receiver uses** (`github.com/sijms/go-ora/v2`, pure Go), so it negotiates Oracle
+Native Network Encryption with no Oracle Instant Client and no "thick mode".
+
 > **New here?** Start with the step-by-step guide:
 > [`docs/USAGE.md`](docs/USAGE.md). The formal mapping & semantics live in
 > [`specs/SPEC.md`](specs/SPEC.md).
@@ -23,9 +27,10 @@ It catches receiver regressions in query, column mapping, or unit transforms
 1. **Ingest** — reads the value the collector emitted, from either:
    - `otlp-json`: newline-delimited OTLP JSON from a `file` exporter (**recommended**), or
    - `debug-log`: text from the `debug`/`logging` exporter.
-2. **Probe** — connects to Oracle (python-oracledb, thin mode) and runs the same
-   queries the receiver uses (`v$sysstat`/`v$con_sysstat`, `v$resource_limit`,
-   `v$session`, `v$sgainfo`, tablespace views, …), applying the receiver's transforms.
+2. **Probe** — connects to Oracle (go-ora) and runs the same queries the receiver
+   uses (`v$sysstat`/`v$con_sysstat`, `v$resource_limit`, `v$session`, `v$sgainfo`,
+   tablespace views, …), applying the receiver's transforms. The SQL strings are
+   copied verbatim from the receiver's `scraper.go`.
 3. **Compare** — joins on `(metric, attributes)` and checks each value within a
    tolerance (separate defaults for cumulative counters vs gauges).
 
@@ -42,9 +47,8 @@ and point `VALIDATOR_INGEST_PATH` at the JSON file it writes.
 
 ## Run — `./run.sh`
 
-`run.sh` is the single entrypoint. On first run it installs any missing deps
-(`requirements.txt`) into the current Python environment, then forwards all
-arguments to the CLI (override the interpreter with `$PYTHON`):
+`run.sh` is the single entrypoint. It builds the binary (`go build`, needs the Go
+toolchain ≥ 1.23) and runs it:
 
 ```bash
 ./run.sh                 # one-shot; prints a table, exits non-zero on any MISMATCH
@@ -68,7 +72,7 @@ asks NRDB (NerdGraph NRQL) for the corresponding aggregate:
 Needs `NEW_RELIC_API_KEY` + `NEW_RELIC_ACCOUNT_ID` (and `otlp-json` format). See
 §11 of [`specs/SPEC.md`](specs/SPEC.md).
 
-(Equivalent without the wrapper: `python -m validator.cli [...]`.)
+(Equivalent without the wrapper: `go run ./cmd/validator [...]`.)
 
 ## Run — Docker
 
@@ -79,6 +83,7 @@ docker compose run --rm validator       # one-shot
 docker compose run --rm validator --json
 ```
 
+The image is a multi-stage build producing a static binary on `distroless/static`.
 `run.sh` can also delegate to Docker: `./run.sh --docker --watch` /
 `./run.sh --docker --fail-only`. Set `ORACLE_HOST=host.docker.internal` in `.env`
 to reach a DB on the host, or attach the service to your collector's compose
@@ -105,7 +110,7 @@ network (see the comment at the bottom of `docker-compose.yaml`).
   metrics the receiver *computes* (e.g. `*.utilization`, `parse.rate`,
   `sql_service.response.duration`). They appear as `SKIPPED` so coverage gaps are
   explicit; validating them means replicating the receiver's arithmetic and can be
-  added incrementally in `validator/metric_map.py`.
+  added incrementally in `internal/metricmap`.
 
 ## Note on timing
 
@@ -117,20 +122,20 @@ inherent and reported transparently — tighten/loosen tolerances via env vars.
 ## Tests
 
 ```bash
-pytest                # no DB or collector required (pure unit tests)
+go test ./...         # no DB or collector required (pure unit tests)
 ```
 
 ## Specification
 
 [`specs/SPEC.md`](specs/SPEC.md) is the authoritative spec this framework
 implements — the full query→metric→attribute→transform mapping, comparison
-semantics, status/exit codes, the config contract, and a module↔spec
+semantics, status/exit codes, the config contract, and a package↔spec
 cross-reference. Read it to audit coverage or extend the map.
 
 ## Source of truth
 
-The mapping in `validator/metric_map.py` mirrors
+The mapping in `internal/metricmap` mirrors
 `opentelemetry-collector-contrib/receiver/nroracledbreceiver/scraper.go` (see
-§2 of [`specs/SPEC.md`](specs/SPEC.md) for exact file/line references). If that
-scraper's SQL/mapping/transforms change, update `specs/SPEC.md` and
-`metric_map.py` together.
+§2 of [`specs/SPEC.md`](specs/SPEC.md) for exact file/line references); the SQL
+strings are copied verbatim from it. If that scraper's SQL/mapping/transforms
+change, update `specs/SPEC.md` and `internal/metricmap` together.

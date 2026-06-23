@@ -1,8 +1,5 @@
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-tests/
+bin/
 shared/
 .env
 .git
+config.yml

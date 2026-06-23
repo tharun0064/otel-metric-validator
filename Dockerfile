@@ -1,16 +1,21 @@
-FROM python:3.12-slim
+# ---- build ----
+FROM golang:1.23 AS build
+WORKDIR /src
 
-WORKDIR /app
+# Deps first for layer caching
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Install deps first for layer caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+RUN CGO_ENABLED=0 go build -o /out/validator ./cmd/validator
 
-# App code
-COPY validator/ ./validator/
+# ---- runtime ----
+FROM gcr.io/distroless/static-debian12
+COPY --from=build /out/validator /usr/local/bin/validator
 
-# Default: run as a service. Override the command for one-shot, e.g.
-#   docker run ... --rm validator            (one-shot)
-#   docker compose run --rm validator --json  (one-shot json)
-ENTRYPOINT ["python", "-m", "validator.cli"]
+# Default: run as a service. Override for one-shot, e.g.
+#   docker compose run --rm validator            (one-shot)
+#   docker compose run --rm validator --json      (one-shot json)
+ENTRYPOINT ["/usr/local/bin/validator"]
 CMD ["--watch"]

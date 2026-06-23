@@ -1,6 +1,0 @@
-# OTel <-> Oracle metric validator
-oracledb>=2.0      # thin mode, pure-python; no Oracle client needed
-pyyaml             # only used by tests / optional config parsing
-
-# dev / test
-pytest>=7

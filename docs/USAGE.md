@@ -25,11 +25,15 @@ Two independent checks:
                                                                          report + exit code
 ```
 
+The validator is a Go program. It talks to Oracle with the same pure-Go driver
+the receiver uses (`sijms/go-ora`), so it negotiates Native Network Encryption
+out of the box — no Oracle Instant Client required.
+
 ---
 
 ## Prerequisites
 
-- Python 3.10+ (for the local run) **or** Docker (for the container run).
+- Go 1.23+ (for the local run) **or** Docker (for the container run).
 - Network access to the Oracle instance the collector monitors, as a user with
   `SELECT` on the `V$`/`DBA_` views (the receiver's monitoring user works).
 - A collector running the **`nroracledbreceiver`** fork with a **file exporter**
@@ -92,16 +96,15 @@ NEW_RELIC_NERDGRAPH_URL=https://api.newrelic.com/graphql   # staging: https://st
 ```
 
 **`pdb` vs `cdb`:** if the receiver's datasource points at a PDB (e.g.
-`.../FREEPDB1`), keep `pdb`. If it connects to the CDB root, set `cdb` so the
-validator uses the per-PDB `v$con_sysstat`/`CDB_*` queries and matches the
-`oracle.db.pdb` attribute.
+`.../FREEPDB1`), keep `pdb`. If it connects to the CDB root (e.g. a `C##` common
+user), set `cdb` so the validator uses the per-PDB `v$con_sysstat`/`CDB_*` queries
+and matches the `oracle.db.pdb` attribute.
 
 ## Step 3 — Run
 
 ### Local (`run.sh`)
 
-`run.sh` installs any missing deps on first run, then forwards args to the CLI
-(override the interpreter with `$PYTHON`):
+`run.sh` builds the binary with `go build` (needs Go ≥ 1.23 on PATH), then runs it:
 
 ```bash
 ./run.sh                  # one-shot DB check; exits non-zero on a MISMATCH
@@ -145,7 +148,7 @@ summary: OK=1
 | `OK` | DB and collector agree within tolerance | — |
 | `MISMATCH` | values disagree → **non-zero exit** | investigate the receiver mapping/transform |
 | `MISSING_IN_INGEST` | DB has it, collector didn't emit it | usually the metric is disabled in the collector — fine |
-| `MISSING_IN_DB` | collector emitted it, validator has no DB mapping | expected for metrics not yet in `metric_map.py` |
+| `MISSING_IN_DB` | collector emitted it, validator has no DB mapping | expected for metrics not yet in `internal/metricmap` |
 | `SKIPPED` | receiver-computed (v$sysmetric/osstat) | not validated yet (Phase 2) |
 
 ### Ingest check (`--check-ingest`)
@@ -195,10 +198,10 @@ intervals, then validate a window that's already a minute or two in the past.
 | `MISMATCH` on a gauge | tighten/loosen `VALIDATOR_TOLERANCE_GAUGE`; confirm it's truly a gauge in `metadata.yaml` |
 | everything `MISSING_IN_DB` | wrong `VALIDATOR_CONTAINER_MODE`, or the collector's scope name differs from the fork's |
 | `MISSING_IN_INGEST` for a metric you want | enable it in the collector's receiver config |
+| `ORA-…` / login failures on connect | wrong creds or service; for a CDB root use the `C##` common user and `VALIDATOR_CONTAINER_MODE=cdb` |
 | `INGEST_NO_DATA` | data hasn't landed yet (lag), or the NRQL window/attrs don't match — widen the window |
 | `INGEST_ERROR: request failed` | check `NEW_RELIC_API_KEY`, `NEW_RELIC_ACCOUNT_ID`, and prod-vs-staging `NEW_RELIC_NERDGRAPH_URL` |
 | ingest check all `INGEST_SKIPPED` | only `otlp-json` is supported; the file needs ≥2 scrapes for a delta |
-| `DPY-3001: Native Network Encryption … only supported in thick mode` | the server enforces NNE — set `VALIDATOR_ORACLE_THICK=1` and install an Oracle Instant Client (point `ORACLE_CLIENT_LIB_DIR` at it if not on the default lib path) |
 
 Tolerances and the watch interval are all env vars — see §8 of
 [`../specs/SPEC.md`](../specs/SPEC.md).
@@ -208,15 +211,15 @@ Tolerances and the watch interval are all env vars — see §8 of
 ## Extending coverage
 
 Phase-2 (computed) metrics are reported `SKIPPED`. To validate one, add its
-derivation to `validator/metric_map.py` (and remove it from `COMPUTED_SKIP`),
-then add a unit test. Keep `specs/SPEC.md` updated in the same change — §2 and §9
-explain the maintenance contract.
+derivation to `internal/metricmap` (and remove it from `ComputedSkip`), then add a
+unit test. Keep `specs/SPEC.md` updated in the same change — §2 and §9 explain the
+maintenance contract.
 
 ---
 
 ## Verify your setup quickly
 
 ```bash
-pytest                 # 39 unit tests, no DB/collector/NR needed
-./run.sh --help        # confirms the CLI wiring
+go test ./...          # unit tests, no DB/collector/NR needed
+go build ./...         # confirms the build
 ```

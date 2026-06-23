@@ -1,8 +1,7 @@
+# build output
+bin/
 .venv/
-__pycache__/
-*.pyc
 .env
-.pytest_cache/
 
 # collector config holds live DB password + NR api-key — never commit
 config.yml
