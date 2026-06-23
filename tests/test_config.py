@@ -2,7 +2,13 @@
 
 import os
 
-from validator.config import load_dotenv
+from validator.config import load_config, load_dotenv
+
+_BASE_ENV = {
+    "ORACLE_HOST": "h", "ORACLE_SERVICE": "s",
+    "ORACLE_MONITORING_USER": "u", "ORACLE_MONITORING_PASSWORD": "p",
+    "VALIDATOR_INGEST_PATH": "x",
+}
 
 
 def _load(tmp_path, body, monkeypatch, clear=()):
@@ -45,3 +51,20 @@ def test_full_line_comment_and_blank_ignored(tmp_path, monkeypatch):
     _load(tmp_path, "# a comment\n\nORACLE_PORT=1521\n",
           monkeypatch, clear=["ORACLE_PORT"])
     assert os.environ["ORACLE_PORT"] == "1521"
+
+
+def test_thick_mode_off_by_default():
+    cfg = load_config(dict(_BASE_ENV))
+    assert cfg.oracle_thick is False
+    assert cfg.oracle_client_lib_dir == ""
+
+
+def test_thick_mode_enabled_by_flag():
+    cfg = load_config({**_BASE_ENV, "VALIDATOR_ORACLE_THICK": "1"})
+    assert cfg.oracle_thick is True
+
+
+def test_lib_dir_implies_thick_mode():
+    cfg = load_config({**_BASE_ENV, "ORACLE_CLIENT_LIB_DIR": "/opt/oracle/ic"})
+    assert cfg.oracle_thick is True
+    assert cfg.oracle_client_lib_dir == "/opt/oracle/ic"

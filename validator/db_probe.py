@@ -1,6 +1,9 @@
 """Run the receiver's monitoring SQL directly against Oracle (ground truth).
 
-Uses python-oracledb in thin mode (no Oracle Instant Client required).
+Uses python-oracledb in thin mode by default (no Oracle Instant Client needed).
+If the DB server enforces Native Network Encryption (NNE) — thin mode cannot
+negotiate it — set VALIDATOR_ORACLE_THICK=1 (and optionally ORACLE_CLIENT_LIB_DIR)
+to switch to thick mode, which requires an Oracle Instant Client install.
 """
 
 from __future__ import annotations
@@ -10,6 +13,18 @@ from dataclasses import dataclass, field
 
 from . import metric_map
 from .config import Config
+
+_thick_initialized = False
+
+
+def _ensure_thick_mode(oracledb, cfg: Config) -> None:
+    """Initialize the Oracle Instant Client once, for NNE-enforcing servers."""
+    global _thick_initialized
+    if _thick_initialized:
+        return
+    kwargs = {"lib_dir": cfg.oracle_client_lib_dir} if cfg.oracle_client_lib_dir else {}
+    oracledb.init_oracle_client(**kwargs)
+    _thick_initialized = True
 
 
 @dataclass
@@ -42,6 +57,8 @@ def probe(cfg: Config) -> ProbeResult:
     expected: dict[tuple, metric_map.Expected] = {}
     errors: list[str] = []
 
+    if cfg.oracle_thick:
+        _ensure_thick_mode(oracledb, cfg)
     conn = oracledb.connect(user=cfg.user, password=cfg.password, dsn=cfg.dsn)
     probe_time = time.time()
     try:

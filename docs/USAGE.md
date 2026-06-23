@@ -198,6 +198,7 @@ intervals, then validate a window that's already a minute or two in the past.
 | `INGEST_NO_DATA` | data hasn't landed yet (lag), or the NRQL window/attrs don't match — widen the window |
 | `INGEST_ERROR: request failed` | check `NEW_RELIC_API_KEY`, `NEW_RELIC_ACCOUNT_ID`, and prod-vs-staging `NEW_RELIC_NERDGRAPH_URL` |
 | ingest check all `INGEST_SKIPPED` | only `otlp-json` is supported; the file needs ≥2 scrapes for a delta |
+| `DPY-3001: Native Network Encryption … only supported in thick mode` | the server enforces NNE — set `VALIDATOR_ORACLE_THICK=1` and install an Oracle Instant Client (point `ORACLE_CLIENT_LIB_DIR` at it if not on the default lib path) |
 
 Tolerances and the watch interval are all env vars — see §8 of
 [`../specs/SPEC.md`](../specs/SPEC.md).

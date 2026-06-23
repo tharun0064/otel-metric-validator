@@ -81,6 +81,11 @@ class Config:
     nr_account_id: str
     nr_nerdgraph_url: str
 
+    # Oracle thick mode — required when the DB server enforces Native Network
+    # Encryption (NNE), which python-oracledb thin mode does not support.
+    oracle_thick: bool = False
+    oracle_client_lib_dir: str = ""  # optional Instant Client dir for init_oracle_client
+
     @property
     def dsn(self) -> str:
         return f"{self.host}:{self.port}/{self.service}"
@@ -142,6 +147,10 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         except (TypeError, ValueError):
             raise ConfigError(f"{key} must be an integer, got {e.get(key)!r}")
 
+    lib_dir = e.get("ORACLE_CLIENT_LIB_DIR", "").strip()
+    thick = e.get("VALIDATOR_ORACLE_THICK", "").strip().lower() in ("1", "true", "yes", "on")
+    thick = thick or bool(lib_dir)  # specifying a client lib dir implies thick mode
+
     return Config(
         host=e["ORACLE_HOST"].strip(),
         port=_int("ORACLE_PORT", 1521),
@@ -158,4 +167,6 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         nr_api_key=e.get("NEW_RELIC_API_KEY", "").strip(),
         nr_account_id=e.get("NEW_RELIC_ACCOUNT_ID", "").strip(),
         nr_nerdgraph_url=e.get("NEW_RELIC_NERDGRAPH_URL", "https://api.newrelic.com/graphql").strip(),
+        oracle_thick=thick,
+        oracle_client_lib_dir=lib_dir,
     )
