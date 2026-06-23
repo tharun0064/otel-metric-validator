@@ -127,6 +127,12 @@ func runOnce(cfg config.Config, opt options) ([]compare.Result, []ingestcheck.Re
 	for _, e := range probe.Errors {
 		fmt.Fprintf(os.Stderr, "[db] %s\n", e)
 	}
+	fmt.Fprintf(os.Stderr, "[info] read %d series from %s; %d expected from DB\n",
+		len(emitted), cfg.IngestPath, len(probe.Expected))
+	if len(emitted) == 0 {
+		fmt.Fprintf(os.Stderr, "[info] no metrics parsed from the ingest file — check the collector "+
+			"is writing OTLP JSON to that path (format=%s, scope must contain nroracledbreceiver)\n", cfg.IngestFormat)
+	}
 
 	results := compare.Compare(probe.Expected, emitted, cfg)
 	results = filterDB(results, opt.metric)
