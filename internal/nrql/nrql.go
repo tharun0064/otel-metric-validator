@@ -78,7 +78,7 @@ func ParseScalar(payload []byte) (*float64, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &resp); err != nil {
-		return nil, fmt.Errorf("unexpected response shape")
+		return nil, fmt.Errorf("unexpected response shape: %s", snippet(payload))
 	}
 	if len(resp.Errors) > 0 {
 		msgs := make([]string, len(resp.Errors))
@@ -138,5 +138,20 @@ func (c *Client) Run(nrqlQuery string) (*float64, error) {
 	if _, err := buf.ReadFrom(resp.Body); err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d from %s: %s", resp.StatusCode, c.cfg.NRNerdGraphURL, snippet(buf.Bytes()))
+	}
 	return ParseScalar(buf.Bytes())
+}
+
+// snippet returns a trimmed, length-capped view of a response body for errors.
+func snippet(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	if len(s) > 300 {
+		s = s[:300] + "…"
+	}
+	if s == "" {
+		s = "(empty body)"
+	}
+	return s
 }
