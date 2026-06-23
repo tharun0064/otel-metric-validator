@@ -101,16 +101,27 @@ network (see the comment at the bottom of `docker-compose.yaml`).
 
 ## Coverage
 
-- **Validated (Phase 1):** the cumulative counters and direct gauges that map
-  one-to-one from a query row — executions, parses, reads/writes, gets, commits,
+All of the receiver's directly-derivable metrics are validated — the validator
+runs the same ten monitoring queries the receiver does:
+
+- **Counters & direct gauges:** executions, parses, reads/writes, gets, commits,
   rollbacks, logons, deadlocks, `cpu_time` (÷100), `pga_memory`, physical/SQL\*Net
   I/O, sessions/processes/transactions/locks usage & limits, tablespace, SGA,
   data-dictionary hit ratio, storage usage.
-- **Skipped (Phase 2):** the `v$sysmetric`/`v$osstat`-derived utilization & ratio
-  metrics the receiver *computes* (e.g. `*.utilization`, `parse.rate`,
-  `sql_service.response.duration`). They appear as `SKIPPED` so coverage gaps are
-  explicit; validating them means replicating the receiver's arithmetic and can be
-  added incrementally in `internal/metricmap`.
+- **`v$sysmetric` gauges:** the `*.utilization` / ratio metrics
+  (`buffer_cache`, `host.cpu`, `database.cpu`, `library_cache`, `shared_pool`,
+  `database.wait`, `parse`, `execution`, `redo_allocation`), `sort.ratio`,
+  `parse.rate`, and `sql_service.response.duration` (÷100). Oracle computes these
+  inside the view; the validator reads the same value.
+- **`v$osstat` / misc:** `system.cpu.physical.count`, `system.memory.limit`,
+  `oracledb.system.cpu.load`, `oracledb.recycle_bin.limit`, `storage.utilization`
+  (= used/allocated).
+
+`v$sysmetric` values are **60-second-window snapshots**, so these gauges can drift
+more between the collector scrape and the validator probe than the counters do —
+the gauge tolerance absorbs it, or compare under `--watch` across cycles. Nothing
+is reported `SKIPPED` in normal operation; the status remains available for any
+future receiver-computed metric.
 
 ## Note on timing
 

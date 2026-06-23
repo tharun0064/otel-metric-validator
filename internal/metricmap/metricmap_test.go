@@ -135,3 +135,69 @@ func TestCDBQuerySelected(t *testing.T) {
 		t.Fatalf("cdb and pdb sysstat SQL should differ")
 	}
 }
+
+func TestSysmetricDirectAndTransform(t *testing.T) {
+	rows := []map[string]any{
+		{"METRIC_NAME": "Buffer Cache Hit Ratio", "VALUE": 99.5, "PDB_NAME": "PDB2"},
+		{"METRIC_NAME": "SQL Service Response Time", "VALUE": 50.0}, // /100 -> 0.5
+		{"METRIC_NAME": "Memory Sorts Ratio", "VALUE": 100.0},       // static attr sort.type=memory
+	}
+	out := ExpectedFor("sysmetric", rows)
+	got := map[string]Expected{}
+	for _, e := range out {
+		got[e.Metric] = e
+	}
+	if e := got["oracledb.buffer_cache.utilization"]; e.Value != 99.5 || e.Attrs["oracle.db.pdb"] != "PDB2" || e.ValueType != GAUGE {
+		t.Fatalf("buffer_cache: %+v", e)
+	}
+	if e := got["oracledb.sql_service.response.duration"]; e.Value != 0.5 {
+		t.Fatalf("sql_service should be value/100, got %v", e.Value)
+	}
+	if e := got["oracledb.sort.ratio"]; e.Attrs["oracledb.sort.type"] != "memory" {
+		t.Fatalf("sort.ratio attr: %+v", e.Attrs)
+	}
+}
+
+func TestOSStat(t *testing.T) {
+	rows := []map[string]any{
+		{"STAT_NAME": "NUM_CPUS", "VALUE": "8"},
+		{"STAT_NAME": "LOAD", "VALUE": 1.5},
+		{"STAT_NAME": "PHYSICAL_MEMORY_BYTES", "VALUE": "66878488576"},
+	}
+	out := ExpectedFor("osstat", rows)
+	got := map[string]float64{}
+	for _, e := range out {
+		got[e.Metric] = e.Value
+	}
+	if got["system.cpu.physical.count"] != 8 || got["oracledb.system.cpu.load"] != 1.5 || got["system.memory.limit"] != 66878488576 {
+		t.Fatalf("osstat: %+v", got)
+	}
+}
+
+func TestStorageUtilization(t *testing.T) {
+	rows := []map[string]any{{"USED_DB_SIZE": 50.0, "ALLOCATED_DB_SIZE": 200.0}}
+	out := ExpectedFor("storage", rows)
+	got := map[string]float64{}
+	for _, e := range out {
+		got[e.Metric] = e.Value
+	}
+	if got["oracledb.storage.usage"] != 50 {
+		t.Fatalf("usage: %v", got["oracledb.storage.usage"])
+	}
+	if got["oracledb.storage.utilization"] != 0.25 {
+		t.Fatalf("utilization should be used/allocated=0.25, got %v", got["oracledb.storage.utilization"])
+	}
+}
+
+func TestRecycleBin(t *testing.T) {
+	out := ExpectedFor("recycle_bin", []map[string]any{{"RECYCLE_BIN_SIZE_BYTES": 4096.0}})
+	if len(out) != 1 || out[0].Metric != "oracledb.recycle_bin.limit" || out[0].Value != 4096 {
+		t.Fatalf("recycle_bin: %+v", out)
+	}
+}
+
+func TestComputedSkipEmpty(t *testing.T) {
+	if len(ComputedSkip) != 0 {
+		t.Fatalf("ComputedSkip should be empty now: %+v", ComputedSkip)
+	}
+}

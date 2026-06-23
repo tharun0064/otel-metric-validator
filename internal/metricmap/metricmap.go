@@ -112,6 +112,11 @@ const (
 	sgaInfoSQL          = "SELECT NAME, BYTES FROM v$sgainfo"
 	dataDictHitRatioSQL = "SELECT (1-(SUM(getmisses)/SUM(gets))) * 100 as DATA_DICTIONARY_HIT_RATIO FROM v$rowcache WHERE getmisses + gets <> 0"
 	storageUsageSQL     = "WITH total_bytes AS (SELECT SUM(bytes) AS total FROM dba_data_files) SELECT (total - (SELECT SUM(bytes) FROM dba_free_space)) AS USED_DB_SIZE, total AS ALLOCATED_DB_SIZE FROM total_bytes"
+
+	sysmetricSQL    = "SELECT metric_name, value FROM v$sysmetric WHERE group_id = 2"
+	sysmetricCDBSQL = "SELECT s.metric_name AS METRIC_NAME, s.value AS VALUE, c.name AS PDB_NAME FROM v$con_sysmetric s, v$containers c WHERE s.con_id = c.con_id(+)"
+	osStatSQL       = "SELECT STAT_NAME, VALUE FROM v$osstat WHERE STAT_NAME IN ('LOAD', 'NUM_CPUS', 'PHYSICAL_MEMORY_BYTES')"
+	recycleBinSQL   = "SELECT nvl(SUM(SPACE*(SELECT value FROM v$parameter WHERE name = 'db_block_size')),0) as RECYCLE_BIN_SIZE_BYTES FROM dba_recyclebin"
 )
 
 // sgaMaxComponent is the v$sgainfo NAME that maps to oracledb.sga.limit.
@@ -135,6 +140,12 @@ func QuerySQL(key string, isCDB bool) string {
 		pdb, cdb = dataDictHitRatioSQL, dataDictHitRatioSQL
 	case "storage":
 		pdb, cdb = storageUsageSQL, storageUsageSQL
+	case "sysmetric":
+		pdb, cdb = sysmetricSQL, sysmetricCDBSQL
+	case "osstat":
+		pdb, cdb = osStatSQL, osStatSQL
+	case "recycle_bin":
+		pdb, cdb = recycleBinSQL, recycleBinSQL
 	}
 	if isCDB {
 		return cdb
@@ -142,9 +153,12 @@ func QuerySQL(key string, isCDB bool) string {
 	return pdb
 }
 
-// AllQueryKeys lists the Phase-1 query keys.
+// AllQueryKeys lists the query keys the validator probes.
 func AllQueryKeys() []string {
-	return []string{"sysstat", "session_count", "resource_limits", "tablespace", "sga", "data_dict", "storage"}
+	return []string{
+		"sysstat", "session_count", "resource_limits", "tablespace", "sga",
+		"data_dict", "storage", "sysmetric", "osstat", "recycle_bin",
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -226,27 +240,36 @@ var resourceLimitMap = map[string][]resourceLimitCol{
 	"transactions":      {{"oracledb.transactions.usage", "CURRENT_UTILIZATION"}, {"oracledb.transactions.limit", "LIMIT_VALUE"}},
 }
 
-// ComputedSkip lists receiver-computed metrics (v$sysmetric / v$osstat derived)
-// that are reported as SKIPPED rather than validated.
-var ComputedSkip = map[string]bool{
-	"oracledb.database.cpu.utilization":      true,
-	"oracledb.host.cpu.utilization":          true,
-	"oracledb.buffer_cache.utilization":      true,
-	"oracledb.library_cache.utilization":     true,
-	"oracledb.shared_pool.utilization":       true,
-	"oracledb.database.wait.utilization":     true,
-	"oracledb.execution.utilization":         true,
-	"oracledb.parse.utilization":             true,
-	"oracledb.parse.rate":                    true,
-	"oracledb.sort.ratio":                    true,
-	"oracledb.redo_allocation.utilization":   true,
-	"oracledb.sql_service.response.duration": true,
-	"oracledb.storage.utilization":           true,
-	"oracledb.system.cpu.load":               true,
-	"system.cpu.physical.count":              true,
-	"system.memory.limit":                    true,
-	"oracledb.recycle_bin.limit":             true,
+// sysmetricEntry maps a v$sysmetric metric_name to its OTel metric, an optional
+// value transform, and any static attributes the receiver attaches.
+type sysmetricEntry struct {
+	metric    string
+	transform func(float64) float64
+	attrs     map[string]string
 }
+
+// sysmetricMap mirrors the receiver's v$sysmetric (group_id=2) name->metric switch.
+// Oracle computes these values inside the view; the receiver reads value as-is
+// except where a transform is noted.
+var sysmetricMap = map[string]sysmetricEntry{
+	"Buffer Cache Hit Ratio":      {metric: "oracledb.buffer_cache.utilization"},
+	"Host CPU Utilization (%)":    {metric: "oracledb.host.cpu.utilization"},
+	"Database CPU Time Ratio":     {metric: "oracledb.database.cpu.utilization"},
+	"Library Cache Hit Ratio":     {metric: "oracledb.library_cache.utilization"},
+	"Shared Pool Free %":          {metric: "oracledb.shared_pool.utilization"},
+	"Database Wait Time Ratio":    {metric: "oracledb.database.wait.utilization"},
+	"Soft Parse Ratio":            {metric: "oracledb.parse.utilization"},
+	"Redo Allocation Hit Ratio":   {metric: "oracledb.redo_allocation.utilization"},
+	"SQL Service Response Time":   {metric: "oracledb.sql_service.response.duration", transform: func(v float64) float64 { return v / 100.0 }},
+	"Memory Sorts Ratio":          {metric: "oracledb.sort.ratio", attrs: map[string]string{"oracledb.sort.type": "memory"}},
+	"Parse Failure Count Per Sec": {metric: "oracledb.parse.rate", attrs: map[string]string{"oracledb.parse.result": "failure"}},
+	"Execute Without Parse Ratio": {metric: "oracledb.execution.utilization", attrs: map[string]string{"oracledb.parse.type": "soft"}},
+}
+
+// ComputedSkip lists metrics that are emitted but not validated. Empty now that
+// the v$sysmetric / v$osstat / recycle-bin / storage.utilization metrics are
+// covered; kept so the SKIPPED path stays available for future additions.
+var ComputedSkip = map[string]bool{}
 
 // metricValueType maps a metric name to SUM/GAUGE, for consumers (ingest check)
 // that only know the metric name.
@@ -269,11 +292,17 @@ func buildValueTypes() map[string]string {
 			vt[p.metric] = GAUGE
 		}
 	}
+	for _, e := range sysmetricMap {
+		vt[e.metric] = GAUGE
+	}
 	for _, m := range []string{
 		"oracledb.sessions.usage",
 		"oracledb.tablespace_size.usage", "oracledb.tablespace_size.limit",
 		"oracledb.sga.usage", "oracledb.sga.limit",
 		"oracledb.data_dictionary.hit_ratio", "oracledb.storage.usage",
+		"oracledb.storage.utilization",
+		"oracledb.system.cpu.load", "system.cpu.physical.count", "system.memory.limit",
+		"oracledb.recycle_bin.limit",
 	} {
 		vt[m] = GAUGE
 	}
@@ -314,6 +343,12 @@ func ExpectedFor(queryKey string, rows []map[string]any) []Expected {
 		return extractDataDict(rows)
 	case "storage":
 		return extractStorage(rows)
+	case "sysmetric":
+		return extractSysmetric(rows)
+	case "osstat":
+		return extractOSStat(rows)
+	case "recycle_bin":
+		return extractRecycleBin(rows)
 	}
 	return nil
 }
@@ -427,8 +462,59 @@ func extractDataDict(rows []map[string]any) []Expected {
 func extractStorage(rows []map[string]any) []Expected {
 	var out []Expected
 	for _, row := range rows {
-		if value, ok := toFloat(row["USED_DB_SIZE"]); ok {
-			out = append(out, Expected{"oracledb.storage.usage", map[string]string{}, value, GAUGE})
+		used, uok := toFloat(row["USED_DB_SIZE"])
+		if uok {
+			out = append(out, Expected{"oracledb.storage.usage", map[string]string{}, used, GAUGE})
+		}
+		// storage.utilization = used / allocated (ratio, not percent), guarded > 0.
+		if alloc, aok := toFloat(row["ALLOCATED_DB_SIZE"]); uok && aok && alloc > 0 {
+			out = append(out, Expected{"oracledb.storage.utilization", map[string]string{}, used / alloc, GAUGE})
+		}
+	}
+	return out
+}
+
+func extractSysmetric(rows []map[string]any) []Expected {
+	var out []Expected
+	for _, row := range rows {
+		name := asString(row["METRIC_NAME"])
+		value, ok := toFloat(row["VALUE"])
+		e, mapped := sysmetricMap[name]
+		if name == "" || !ok || !mapped {
+			continue
+		}
+		if e.transform != nil {
+			value = e.transform(value)
+		}
+		out = append(out, Expected{e.metric, mergeAttrs(e.attrs, pdbAttr(row)), value, GAUGE})
+	}
+	return out
+}
+
+func extractOSStat(rows []map[string]any) []Expected {
+	var out []Expected
+	for _, row := range rows {
+		value, ok := toFloat(row["VALUE"])
+		if !ok {
+			continue
+		}
+		switch asString(row["STAT_NAME"]) {
+		case "NUM_CPUS":
+			out = append(out, Expected{"system.cpu.physical.count", map[string]string{}, value, GAUGE})
+		case "LOAD":
+			out = append(out, Expected{"oracledb.system.cpu.load", map[string]string{}, value, GAUGE})
+		case "PHYSICAL_MEMORY_BYTES":
+			out = append(out, Expected{"system.memory.limit", map[string]string{}, value, GAUGE})
+		}
+	}
+	return out
+}
+
+func extractRecycleBin(rows []map[string]any) []Expected {
+	var out []Expected
+	for _, row := range rows {
+		if value, ok := toFloat(row["RECYCLE_BIN_SIZE_BYTES"]); ok {
+			out = append(out, Expected{"oracledb.recycle_bin.limit", map[string]string{}, value, GAUGE})
 		}
 	}
 	return out

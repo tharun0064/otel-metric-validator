@@ -148,8 +148,8 @@ summary: OK=1
 | `OK` | DB and collector agree within tolerance | — |
 | `MISMATCH` | values disagree → **non-zero exit** | investigate the receiver mapping/transform |
 | `MISSING_IN_INGEST` | DB has it, collector didn't emit it | usually the metric is disabled in the collector — fine |
-| `MISSING_IN_DB` | collector emitted it, validator has no DB mapping | expected for metrics not yet in `internal/metricmap` |
-| `SKIPPED` | receiver-computed (v$sysmetric/osstat) | not validated yet (Phase 2) |
+| `MISSING_IN_DB` | collector emitted it, validator has no DB mapping | expected only for metrics not in `internal/metricmap` (e.g. a new receiver metric) |
+| `SKIPPED` | declared in `ComputedSkip` | none in normal operation — reserved for future receiver-computed metrics |
 
 ### Ingest check (`--check-ingest`)
 
@@ -211,10 +211,12 @@ Tolerances and the watch interval are all env vars — see §8 of
 
 ## Extending coverage
 
-Phase-2 (computed) metrics are reported `SKIPPED`. To validate one, add its
-derivation to `internal/metricmap` (and remove it from `ComputedSkip`), then add a
-unit test. Keep `specs/SPEC.md` updated in the same change — §2 and §9 explain the
-maintenance contract.
+All of the receiver's current metrics are validated (`ComputedSkip` is empty). If
+the receiver adds a new metric or query, mirror it in `internal/metricmap` — add
+the SQL to `QuerySQL`/`AllQueryKeys` and an extractor, plus a unit test — and update
+`specs/SPEC.md` in the same change (§2 and §9 explain the maintenance contract). If
+a new metric is genuinely computed and not worth replicating, add it to
+`ComputedSkip` so it surfaces as `SKIPPED` rather than `MISSING_IN_DB`.
 
 ---
 

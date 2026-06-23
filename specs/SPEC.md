@@ -160,20 +160,46 @@ Per row: `BYTES` is the value, `NAME` the component.
 ### 4.6 `v$rowcache`  →  `oracledb.data_dictionary.hit_ratio` (gauge)
 Value = `DATA_DICTIONARY_HIT_RATIO`.
 
-### 4.7 storage (`dba_data_files`/`dba_free_space`)  →  `oracledb.storage.usage` (gauge)
-Value = `USED_DB_SIZE` bytes. (`storage.utilization` is computed → Phase 2.)
+### 4.7 storage (`dba_data_files`/`dba_free_space`)  → gauges
+- `oracledb.storage.usage = USED_DB_SIZE` bytes
+- `oracledb.storage.utilization = USED_DB_SIZE / ALLOCATED_DB_SIZE` (ratio, not %; only when allocated > 0)
 
-## 5. Phase 2 — `SKIPPED` (declared, not yet validated)
+### 4.8 `v$sysmetric` (group_id=2; CDB: `v$con_sysmetric`)  → gauges
+`metric_name` selects the metric; `value` is read as-is (Oracle computes it inside
+the view) except where noted. `oracle.db.pdb=PDB_NAME` when the CDB query returns it.
 
-Reported as `SKIPPED` (never silently dropped). These are computed by the
-receiver from `v$sysmetric` / `v$osstat`; validating them means replicating the
-arithmetic. Enumerated in `metric_map.COMPUTED_SKIP`:
+| metric_name | metric | transform / attrs |
+|---|---|---|
+| `Buffer Cache Hit Ratio` | `oracledb.buffer_cache.utilization` | — |
+| `Host CPU Utilization (%)` | `oracledb.host.cpu.utilization` | — |
+| `Database CPU Time Ratio` | `oracledb.database.cpu.utilization` | — |
+| `Library Cache Hit Ratio` | `oracledb.library_cache.utilization` | — |
+| `Shared Pool Free %` | `oracledb.shared_pool.utilization` | — |
+| `Database Wait Time Ratio` | `oracledb.database.wait.utilization` | — |
+| `Soft Parse Ratio` | `oracledb.parse.utilization` | — |
+| `Redo Allocation Hit Ratio` | `oracledb.redo_allocation.utilization` | — |
+| `SQL Service Response Time` | `oracledb.sql_service.response.duration` | `value / 100` (centiseconds→s) |
+| `Memory Sorts Ratio` | `oracledb.sort.ratio` | attr `oracledb.sort.type=memory` |
+| `Parse Failure Count Per Sec` | `oracledb.parse.rate` | attr `oracledb.parse.result=failure` |
+| `Execute Without Parse Ratio` | `oracledb.execution.utilization` | attr `oracledb.parse.type=soft` |
 
-`*.utilization` family (`database.cpu`, `host.cpu`, `buffer_cache`, `library_cache`,
-`shared_pool`, `database.wait`, `execution`, `parse`, `redo_allocation`, `storage`),
-`oracledb.parse.rate`, `oracledb.sort.ratio`,
-`oracledb.sql_service.response.duration`, `oracledb.system.cpu.load`,
-`system.cpu.physical.count`, `system.memory.limit`, `oracledb.recycle_bin.limit`.
+### 4.9 `v$osstat`  → gauges
+`STAT_NAME` selects the metric, `VALUE` is the value:
+`NUM_CPUS → system.cpu.physical.count`, `LOAD → oracledb.system.cpu.load`,
+`PHYSICAL_MEMORY_BYTES → system.memory.limit`.
+
+### 4.10 recycle bin (`dba_recyclebin`)  →  `oracledb.recycle_bin.limit` (gauge)
+Value = `RECYCLE_BIN_SIZE_BYTES`.
+
+## 5. SKIPPED (reserved)
+
+`metricmap.ComputedSkip` is **empty** — all of the receiver's metrics above are
+validated. The `SKIPPED` status (and the set) is kept so any future
+receiver-computed metric can be declared rather than silently dropped.
+
+**Timing note:** the `v$sysmetric` metrics (§4.8) are 60-second-window snapshots
+Oracle recomputes each minute, so they drift more between scrape and probe than the
+counters — rely on the gauge tolerance or `--watch`.
 
 ## 6. Ingest formats
 

@@ -71,11 +71,12 @@ func TestSinglePointCounterSkipped(t *testing.T) {
 	}
 }
 
-func TestComputedSkipped(t *testing.T) {
-	s := ingest.Series{Metric: "oracledb.host.cpu.utilization", Attrs: map[string]string{}, FirstValue: 1, FirstTS: 1_000_000_000, LastValue: 2, LastTS: 3_000_000_000, NPoints: 3}
+func TestUnmappedSkipped(t *testing.T) {
+	// A metric the validator has no DB mapping for can't be ingest-checked.
+	s := ingest.Series{Metric: "oracledb.not_a_real_metric", Attrs: map[string]string{}, FirstValue: 1, FirstTS: 1_000_000_000, LastValue: 2, LastTS: 3_000_000_000, NPoints: 3}
 	out := checkWith(seriesMap(s), cfg(), &stubRunner{value: f(1)})
 	if out[0].Status != Skipped {
-		t.Fatalf("computed should be skipped, got %s", out[0].Status)
+		t.Fatalf("unmapped should be skipped, got %s", out[0].Status)
 	}
 }
 

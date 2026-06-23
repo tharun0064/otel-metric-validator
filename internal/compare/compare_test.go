@@ -66,7 +66,10 @@ func TestMissingInIngestNotFailure(t *testing.T) {
 }
 
 func TestComputedSkipped(t *testing.T) {
-	r := Compare(map[string]metricmap.Expected{}, emt("oracledb.host.cpu.utilization", 42, nil), cfg())
+	// All real metrics are mapped now; exercise the SKIPPED path with a temp entry.
+	metricmap.ComputedSkip["oracledb.test.skipme"] = true
+	defer delete(metricmap.ComputedSkip, "oracledb.test.skipme")
+	r := Compare(map[string]metricmap.Expected{}, emt("oracledb.test.skipme", 42, nil), cfg())
 	if r[0].Status != Skipped || HasFailures(r) {
 		t.Fatalf("computed metric should be SKIPPED, got %s", r[0].Status)
 	}
