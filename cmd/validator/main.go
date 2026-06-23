@@ -147,9 +147,26 @@ func runOnce(cfg config.Config, opt options) ([]compare.Result, []ingestcheck.Re
 				return nil, nil, err
 			}
 			ic = filterIngest(ingestcheck.Check(series, cfg), opt.metric)
+			for _, note := range distinctIngestErrors(ic) {
+				fmt.Fprintf(os.Stderr, "[ingest] error: %s\n", note)
+			}
 		}
 	}
 	return results, ic, nil
+}
+
+// distinctIngestErrors returns the unique error notes among INGEST_ERROR rows so
+// the cause (auth, region, network) is visible rather than a bare status.
+func distinctIngestErrors(results []ingestcheck.Result) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range results {
+		if r.Status == ingestcheck.Error && r.Note != "" && !seen[r.Note] {
+			seen[r.Note] = true
+			out = append(out, r.Note)
+		}
+	}
+	return out
 }
 
 func filterDB(results []compare.Result, sub string) []compare.Result {
