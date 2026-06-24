@@ -60,8 +60,11 @@ func checkOne(s ingest.Series, cfg config.Config, client runner) Result {
 				Note: "need >=2 emitted points across time for a delta"}
 		}
 		expected = s.LastValue - s.FirstValue
-		// Exclude the first point's own delta (it belongs to the prior interval).
-		query = nrql.BuildDeltaQuery(s.Metric, s.Attrs, sinceMS+1, untilMS)
+		// NR stamps each delta at the END of its interval; NRQL UNTIL is exclusive.
+		// SINCE first+1 drops the first point's delta (it belongs to the prior
+		// interval); UNTIL last+1 includes the final interval's delta. Net window
+		// sum = C(last) - C(first) = expected.
+		query = nrql.BuildDeltaQuery(s.Metric, s.Attrs, sinceMS+1, untilMS+1)
 	} else {
 		expected = s.LastValue
 		query = nrql.BuildLatestQuery(s.Metric, s.Attrs, sinceMS, untilMS+1000)

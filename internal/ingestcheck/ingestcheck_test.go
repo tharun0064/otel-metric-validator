@@ -38,7 +38,7 @@ func TestCounterDeltaOK(t *testing.T) {
 		t.Fatalf("expected delta 80, got %v", out[0].Expected)
 	}
 	// delta query should exclude the boundary point (SINCE first+1).
-	if want := "SELECT sum(`oracledb.executions`) FROM Metric SINCE 1001 UNTIL 3000"; stub.last != want {
+	if want := "SELECT sum(`oracledb.executions`) FROM Metric SINCE 1001 UNTIL 3001"; stub.last != want {
 		t.Fatalf("query: %s", stub.last)
 	}
 }
