@@ -31,6 +31,11 @@ type Config struct {
 	AbsEpsilon    float64
 	WatchInterval float64
 
+	// IngestWindowMinutes bounds the ingest-check delta window to the last N
+	// minutes of the OTLP file (0 = whole file). A bounded window makes the
+	// counter check a genuine *partial* delta rather than ≈ the full cumulative.
+	IngestWindowMinutes float64
+
 	// New Relic NRQL ingest check (optional; required only with --check-ingest)
 	NRAPIKey       string
 	NRAccountID    string
@@ -153,24 +158,29 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	ingestWindow, err := floatOr("VALIDATOR_INGEST_WINDOW_MINUTES", 0)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		Host:           strings.TrimSpace(os.Getenv("ORACLE_HOST")),
-		Port:           port,
-		Service:        strings.TrimSpace(os.Getenv("ORACLE_SERVICE")),
-		User:           strings.TrimSpace(os.Getenv("ORACLE_MONITORING_USER")),
-		Password:       os.Getenv("ORACLE_MONITORING_PASSWORD"),
-		IngestPath:     ingestPath,
-		IngestFormat:   fmtv,
-		ContainerMode:  mode,
-		TolGauge:       tolGauge,
-		TolCounter:     tolCounter,
-		AbsEpsilon:     absEps,
-		WatchInterval:  watch,
-		NRAPIKey:       strings.TrimSpace(os.Getenv("NEW_RELIC_API_KEY")),
-		NRAccountID:    strings.TrimSpace(os.Getenv("NEW_RELIC_ACCOUNT_ID")),
-		NRNerdGraphURL: strings.TrimSpace(envOr("NEW_RELIC_NERDGRAPH_URL", "https://api.newrelic.com/graphql")),
-		NRScopeAttrs:   scopeAttrs(),
+		Host:                strings.TrimSpace(os.Getenv("ORACLE_HOST")),
+		Port:                port,
+		Service:             strings.TrimSpace(os.Getenv("ORACLE_SERVICE")),
+		User:                strings.TrimSpace(os.Getenv("ORACLE_MONITORING_USER")),
+		Password:            os.Getenv("ORACLE_MONITORING_PASSWORD"),
+		IngestPath:          ingestPath,
+		IngestFormat:        fmtv,
+		ContainerMode:       mode,
+		TolGauge:            tolGauge,
+		TolCounter:          tolCounter,
+		AbsEpsilon:          absEps,
+		WatchInterval:       watch,
+		IngestWindowMinutes: ingestWindow,
+		NRAPIKey:            strings.TrimSpace(os.Getenv("NEW_RELIC_API_KEY")),
+		NRAccountID:         strings.TrimSpace(os.Getenv("NEW_RELIC_ACCOUNT_ID")),
+		NRNerdGraphURL:      strings.TrimSpace(envOr("NEW_RELIC_NERDGRAPH_URL", "https://api.newrelic.com/graphql")),
+		NRScopeAttrs:        scopeAttrs(),
 	}, nil
 }
 

@@ -189,11 +189,16 @@ func ReadOTLPJSON(path string) (map[string]Emitted, error) {
 	return latest, err
 }
 
-// ReadOTLPSeries collapses all OTLP-JSON points into per-series first/last endpoints.
-func ReadOTLPSeries(path string) (map[string]Series, error) {
+// ReadOTLPSeries collapses all OTLP-JSON points into per-series first/last
+// endpoints. Points older than sinceNanos are ignored (0 = whole file); bounding
+// the window makes the counter delta a partial increase rather than ≈ cumulative.
+func ReadOTLPSeries(path string, sinceNanos int64) (map[string]Series, error) {
 	series := map[string]Series{}
 	err := scanLines(path, func(line []byte) {
 		iterOTLP(line, func(pt Emitted) {
+			if sinceNanos > 0 && pt.TimeUnixNano < sinceNanos {
+				return
+			}
 			k := pt.Key()
 			s, ok := series[k]
 			if !ok {

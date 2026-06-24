@@ -75,7 +75,7 @@ func TestReadOTLPSeriesEndpoints(t *testing.T) {
 		line(scope, "oracledb.executions", "sum", "", "2000", "130") + "\n" +
 		line(scope, "oracledb.executions", "sum", "", "3000", "180") + "\n"
 	p := write(t, "m.json", body)
-	series, _ := ReadOTLPSeries(p)
+	series, _ := ReadOTLPSeries(p, 0)
 	s, ok := series[mapKey("oracledb.executions", nil)]
 	if !ok {
 		t.Fatal("series missing")
@@ -85,6 +85,19 @@ func TestReadOTLPSeriesEndpoints(t *testing.T) {
 	}
 	if s.FirstTS != 1000 || s.LastTS != 3000 {
 		t.Fatalf("timestamps: %+v", s)
+	}
+}
+
+func TestReadOTLPSeriesWindow(t *testing.T) {
+	// timestamps in ns; sinceNanos=2500 drops the first two points.
+	body := line(scope, "oracledb.executions", "sum", "", "1000", "100") + "\n" +
+		line(scope, "oracledb.executions", "sum", "", "2000", "130") + "\n" +
+		line(scope, "oracledb.executions", "sum", "", "3000", "180") + "\n"
+	p := write(t, "m.json", body)
+	series, _ := ReadOTLPSeries(p, 2500)
+	s := series[mapKey("oracledb.executions", nil)]
+	if s.FirstTS != 3000 || s.FirstValue != 180 || s.NPoints != 1 {
+		t.Fatalf("window should keep only the point at ts=3000: %+v", s)
 	}
 }
 

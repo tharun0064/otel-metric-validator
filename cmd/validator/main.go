@@ -151,7 +151,11 @@ func runOnce(cfg config.Config, opt options) ([]compare.Result, []ingestcheck.Re
 		if cfg.IngestFormat != "otlp-json" {
 			fmt.Fprintln(os.Stderr, "[ingest] --check-ingest requires VALIDATOR_INGEST_FORMAT=otlp-json; skipping")
 		} else {
-			series, err := ingest.ReadOTLPSeries(cfg.IngestPath)
+			var since int64
+			if cfg.IngestWindowMinutes > 0 {
+				since = time.Now().Add(-time.Duration(cfg.IngestWindowMinutes * float64(time.Minute))).UnixNano()
+			}
+			series, err := ingest.ReadOTLPSeries(cfg.IngestPath, since)
 			if err != nil {
 				return nil, nil, err
 			}

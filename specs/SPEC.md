@@ -271,6 +271,7 @@ minimize skew. This is inherent and reported transparently.
 | `NEW_RELIC_ACCOUNT_ID` | ✓ for `--check-ingest` | — | NR account id |
 | `NEW_RELIC_NERDGRAPH_URL` | | `https://api.newrelic.com/graphql` | NerdGraph endpoint (prod/staging) |
 | `VALIDATOR_NR_SCOPE_ATTRS` | | `host.name` | resource attrs added to the ingest-check NRQL WHERE to scope to this instance (comma-separated; empty disables) |
+| `VALIDATOR_INGEST_WINDOW_MINUTES` | | `0` | bound the ingest-check delta window to the last N minutes (0 = whole file). Set >0 so a counter's last−first is a partial delta, not ≈ the full cumulative |
 
 ## 9. Module ↔ spec map
 
