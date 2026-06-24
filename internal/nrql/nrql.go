@@ -44,14 +44,16 @@ func where(attrs map[string]string) string {
 }
 
 // BuildDeltaQuery builds sum(metric) over (since, until] — the total delta NR
-// stored for the series.
+// stored for the series. The metric is backtick-quoted because names ending in
+// a NRQL reserved word (e.g. oracledb.sga.limit) otherwise fail to parse.
 func BuildDeltaQuery(metric string, attrs map[string]string, sinceMS, untilMS int64) string {
-	return fmt.Sprintf("SELECT sum(%s) FROM Metric%s SINCE %d UNTIL %d", metric, where(attrs), sinceMS, untilMS)
+	return fmt.Sprintf("SELECT sum(`%s`) FROM Metric%s SINCE %d UNTIL %d", metric, where(attrs), sinceMS, untilMS)
 }
 
-// BuildLatestQuery builds latest(metric) over the window.
+// BuildLatestQuery builds latest(metric) over the window (metric backtick-quoted;
+// see BuildDeltaQuery).
 func BuildLatestQuery(metric string, attrs map[string]string, sinceMS, untilMS int64) string {
-	return fmt.Sprintf("SELECT latest(%s) FROM Metric%s SINCE %d UNTIL %d", metric, where(attrs), sinceMS, untilMS)
+	return fmt.Sprintf("SELECT latest(`%s`) FROM Metric%s SINCE %d UNTIL %d", metric, where(attrs), sinceMS, untilMS)
 }
 
 // BuildGraphQL wraps an NRQL string in the NerdGraph actor.account.nrql query.

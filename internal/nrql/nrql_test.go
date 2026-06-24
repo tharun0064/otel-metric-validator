@@ -10,7 +10,7 @@ func TestToMS(t *testing.T) {
 
 func TestBuildDeltaQuery(t *testing.T) {
 	got := BuildDeltaQuery("oracledb.executions", map[string]string{"oracle.db.pdb": "PDB2"}, 1000, 2000)
-	want := "SELECT sum(oracledb.executions) FROM Metric WHERE oracle.db.pdb = 'PDB2' SINCE 1000 UNTIL 2000"
+	want := "SELECT sum(`oracledb.executions`) FROM Metric WHERE oracle.db.pdb = 'PDB2' SINCE 1000 UNTIL 2000"
 	if got != want {
 		t.Fatalf("\n got: %s\nwant: %s", got, want)
 	}
@@ -18,7 +18,7 @@ func TestBuildDeltaQuery(t *testing.T) {
 
 func TestBuildDeltaQueryNoAttrs(t *testing.T) {
 	got := BuildDeltaQuery("oracledb.executions", map[string]string{}, 1000, 2000)
-	want := "SELECT sum(oracledb.executions) FROM Metric SINCE 1000 UNTIL 2000"
+	want := "SELECT sum(`oracledb.executions`) FROM Metric SINCE 1000 UNTIL 2000"
 	if got != want {
 		t.Fatalf("got %s", got)
 	}
@@ -26,7 +26,7 @@ func TestBuildDeltaQueryNoAttrs(t *testing.T) {
 
 func TestBuildLatestQuery(t *testing.T) {
 	got := BuildLatestQuery("oracledb.pga_memory", map[string]string{}, 10, 20)
-	want := "SELECT latest(oracledb.pga_memory) FROM Metric SINCE 10 UNTIL 20"
+	want := "SELECT latest(`oracledb.pga_memory`) FROM Metric SINCE 10 UNTIL 20"
 	if got != want {
 		t.Fatalf("got %s", got)
 	}

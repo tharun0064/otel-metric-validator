@@ -38,7 +38,7 @@ func TestCounterDeltaOK(t *testing.T) {
 		t.Fatalf("expected delta 80, got %v", out[0].Expected)
 	}
 	// delta query should exclude the boundary point (SINCE first+1).
-	if want := "SELECT sum(oracledb.executions) FROM Metric SINCE 1001 UNTIL 3000"; stub.last != want {
+	if want := "SELECT sum(`oracledb.executions`) FROM Metric SINCE 1001 UNTIL 3000"; stub.last != want {
 		t.Fatalf("query: %s", stub.last)
 	}
 }
@@ -58,7 +58,7 @@ func TestGaugeLatest(t *testing.T) {
 	if out[0].Status != OK {
 		t.Fatalf("gauge latest should be OK, got %s", out[0].Status)
 	}
-	if want := "SELECT latest(oracledb.pga_memory) FROM Metric SINCE 1000 UNTIL 3000"; stub.last != want {
+	if want := "SELECT latest(`oracledb.pga_memory`) FROM Metric SINCE 1000 UNTIL 3000"; stub.last != want {
 		t.Fatalf("query: %s", stub.last)
 	}
 }
