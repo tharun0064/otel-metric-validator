@@ -30,6 +30,7 @@ type options struct {
 	jsonOut     bool
 	metric      string
 	failOnly    bool
+	showQueries bool
 }
 
 func main() {
@@ -45,6 +46,7 @@ func run(argv []string) int {
 	fs.BoolVar(&opt.jsonOut, "json", false, "machine-readable JSON output")
 	fs.StringVar(&opt.metric, "metric", "", "only report metrics whose name contains this substring")
 	fs.BoolVar(&opt.failOnly, "fail-only", false, "hide OK rows in the tables")
+	fs.BoolVar(&opt.showQueries, "show-queries", false, "print the SQL sent to Oracle and the NRQL sent to NerdGraph before the report")
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
@@ -134,6 +136,13 @@ func runOnce(cfg config.Config, opt options) ([]compare.Result, []ingestcheck.Re
 			"is writing OTLP JSON to that path (format=%s, scope must contain oracledbreceiver)\n", cfg.IngestFormat)
 	}
 
+	if opt.showQueries {
+		fmt.Fprintf(os.Stderr, "\n== DB calls (%s@%s:%d/%s) ==\n", cfg.User, cfg.Host, cfg.Port, cfg.Service)
+		for _, q := range probe.Queries {
+			fmt.Fprintln(os.Stderr, "  "+q)
+		}
+	}
+
 	results := compare.Compare(probe.Expected, emitted, cfg)
 	results = filterDB(results, opt.metric)
 
@@ -147,6 +156,14 @@ func runOnce(cfg config.Config, opt options) ([]compare.Result, []ingestcheck.Re
 				return nil, nil, err
 			}
 			ic = filterIngest(ingestcheck.Check(series, cfg), opt.metric)
+			if opt.showQueries {
+				fmt.Fprintf(os.Stderr, "\n== NRQL calls (%s) ==\n", cfg.NRNerdGraphURL)
+				for _, r := range ic {
+					if r.NRQL != "" {
+						fmt.Fprintln(os.Stderr, "  "+r.NRQL)
+					}
+				}
+			}
 			for _, note := range distinctIngestErrors(ic) {
 				fmt.Fprintf(os.Stderr, "[ingest] error: %s\n", note)
 			}

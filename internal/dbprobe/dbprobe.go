@@ -23,7 +23,11 @@ type Result struct {
 	Expected  map[string]metricmap.Expected
 	ProbeTime time.Time
 	Errors    []string
+	Queries   []string // SQL executed against Oracle (label: sql), for --show-queries
 }
+
+// flatten collapses whitespace/newlines so multi-line SQL prints on one line.
+func flatten(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // DSN builds the go-ora connection URL exactly as the receiver does.
 func DSN(cfg config.Config) string {
@@ -43,14 +47,19 @@ func Probe(cfg config.Config) (Result, error) {
 		// In CDB mode the receiver runs sysmetric as two passes: v$con_sysmetric
 		// (per-PDB) plus v$sysmetric for any metric_name not seen there (no pdb).
 		if key == "sysmetric" && cfg.IsCDB() {
-			conRows := runOrLog(db, metricmap.QuerySQL("sysmetric", true), "sysmetric (v$con_sysmetric)", &res)
-			sysRows := runOrLog(db, metricmap.QuerySQL("sysmetric", false), "sysmetric (v$sysmetric)", &res)
+			conSQL := metricmap.QuerySQL("sysmetric", true)
+			sysSQL := metricmap.QuerySQL("sysmetric", false)
+			res.Queries = append(res.Queries, "sysmetric/cdb: "+flatten(conSQL), "sysmetric: "+flatten(sysSQL))
+			conRows := runOrLog(db, conSQL, "sysmetric (v$con_sysmetric)", &res)
+			sysRows := runOrLog(db, sysSQL, "sysmetric (v$sysmetric)", &res)
 			for _, exp := range metricmap.ExpectedForSysmetricCDB(conRows, sysRows) {
 				res.Expected[exp.Key()] = exp
 			}
 			continue
 		}
-		rows, err := runQuery(db, metricmap.QuerySQL(key, cfg.IsCDB()))
+		query := metricmap.QuerySQL(key, cfg.IsCDB())
+		res.Queries = append(res.Queries, key+": "+flatten(query))
+		rows, err := runQuery(db, query)
 		if err != nil {
 			res.Errors = append(res.Errors, fmt.Sprintf("query %q failed: %v", key, err))
 			continue
