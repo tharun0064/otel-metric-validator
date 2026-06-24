@@ -270,6 +270,7 @@ minimize skew. This is inherent and reported transparently.
 | `NEW_RELIC_API_KEY` | ✓ for `--check-ingest` | — | NerdGraph (user) API key |
 | `NEW_RELIC_ACCOUNT_ID` | ✓ for `--check-ingest` | — | NR account id |
 | `NEW_RELIC_NERDGRAPH_URL` | | `https://api.newrelic.com/graphql` | NerdGraph endpoint (prod/staging) |
+| `VALIDATOR_NR_SCOPE_ATTRS` | | `host.name` | resource attrs added to the ingest-check NRQL WHERE to scope to this instance (comma-separated; empty disables) |
 
 ## 9. Module ↔ spec map
 

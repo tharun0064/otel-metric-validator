@@ -35,6 +35,11 @@ type Config struct {
 	NRAPIKey       string
 	NRAccountID    string
 	NRNerdGraphURL string
+
+	// NRScopeAttrs are OTLP resource attributes (e.g. host.name) added to the
+	// ingest-check NRQL WHERE so the query is scoped to this DB instance and not
+	// summed across every instance in the account. Default: [host.name].
+	NRScopeAttrs []string
 }
 
 // IsCDB reports whether the receiver connects to the CDB root.
@@ -165,7 +170,24 @@ func Load() (Config, error) {
 		NRAPIKey:       strings.TrimSpace(os.Getenv("NEW_RELIC_API_KEY")),
 		NRAccountID:    strings.TrimSpace(os.Getenv("NEW_RELIC_ACCOUNT_ID")),
 		NRNerdGraphURL: strings.TrimSpace(envOr("NEW_RELIC_NERDGRAPH_URL", "https://api.newrelic.com/graphql")),
+		NRScopeAttrs:   scopeAttrs(),
 	}, nil
+}
+
+// scopeAttrs reads VALIDATOR_NR_SCOPE_ATTRS (comma-separated resource attribute
+// keys). Unset defaults to [host.name]; set-but-empty disables scoping.
+func scopeAttrs() []string {
+	v, ok := os.LookupEnv("VALIDATOR_NR_SCOPE_ATTRS")
+	if !ok {
+		return []string{"host.name"}
+	}
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func envOr(key, def string) string {

@@ -42,6 +42,24 @@ type runner interface {
 	Run(nrqlQuery string) (*float64, error)
 }
 
+// scopedAttrs returns the data-point attributes plus the configured resource
+// scope attributes (e.g. host.name) found on the series, for the NRQL WHERE.
+func scopedAttrs(s ingest.Series, scope []string) map[string]string {
+	if len(scope) == 0 {
+		return s.Attrs
+	}
+	out := make(map[string]string, len(s.Attrs)+len(scope))
+	for k, v := range s.Attrs {
+		out[k] = v
+	}
+	for _, k := range scope {
+		if v := s.Resource[k]; v != "" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func checkOne(s ingest.Series, cfg config.Config, client runner) Result {
 	vt, mapped := metricmap.ValueTypeOf(s.Metric)
 	if metricmap.ComputedSkip[s.Metric] || !mapped {
@@ -51,6 +69,10 @@ func checkOne(s ingest.Series, cfg config.Config, client runner) Result {
 
 	sinceMS := nrql.ToMS(s.FirstTS)
 	untilMS := nrql.ToMS(s.LastTS)
+
+	// Scope the NRQL to this DB instance via resource attributes (e.g. host.name)
+	// so sum()/latest() don't aggregate across every instance in the account.
+	attrs := scopedAttrs(s, cfg.NRScopeAttrs)
 
 	var expected float64
 	var query string
@@ -64,10 +86,10 @@ func checkOne(s ingest.Series, cfg config.Config, client runner) Result {
 		// SINCE first+1 drops the first point's delta (it belongs to the prior
 		// interval); UNTIL last+1 includes the final interval's delta. Net window
 		// sum = C(last) - C(first) = expected.
-		query = nrql.BuildDeltaQuery(s.Metric, s.Attrs, sinceMS+1, untilMS+1)
+		query = nrql.BuildDeltaQuery(s.Metric, attrs, sinceMS+1, untilMS+1)
 	} else {
 		expected = s.LastValue
-		query = nrql.BuildLatestQuery(s.Metric, s.Attrs, sinceMS, untilMS+1000)
+		query = nrql.BuildLatestQuery(s.Metric, attrs, sinceMS, untilMS+1000)
 	}
 
 	actual, err := client.Run(query)

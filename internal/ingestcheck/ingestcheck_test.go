@@ -71,6 +71,36 @@ func TestSinglePointCounterSkipped(t *testing.T) {
 	}
 }
 
+func TestScopeAttrAddedToQuery(t *testing.T) {
+	s := ingest.Series{
+		Metric: "oracledb.executions", Attrs: map[string]string{"oracle.db.pdb": "PDB2"},
+		Resource:   map[string]string{"host.name": "db-host:1521"},
+		FirstValue: 100, FirstTS: 1_000_000_000, LastValue: 180, LastTS: 3_000_000_000, NPoints: 3,
+	}
+	c := cfg()
+	c.NRScopeAttrs = []string{"host.name"}
+	stub := &stubRunner{value: f(80)}
+	checkWith(seriesMap(s), c, stub)
+	want := "SELECT sum(`oracledb.executions`) FROM Metric WHERE host.name = 'db-host:1521' AND oracle.db.pdb = 'PDB2' SINCE 1001 UNTIL 3001"
+	if stub.last != want {
+		t.Fatalf("scoped query:\n got: %s\nwant: %s", stub.last, want)
+	}
+}
+
+func TestNoScopeWhenEmpty(t *testing.T) {
+	s := ingest.Series{
+		Metric: "oracledb.executions", Attrs: map[string]string{},
+		Resource:   map[string]string{"host.name": "db-host:1521"},
+		FirstValue: 100, FirstTS: 1_000_000_000, LastValue: 180, LastTS: 3_000_000_000, NPoints: 3,
+	}
+	c := cfg() // NRScopeAttrs nil
+	stub := &stubRunner{value: f(80)}
+	checkWith(seriesMap(s), c, stub)
+	if want := "SELECT sum(`oracledb.executions`) FROM Metric SINCE 1001 UNTIL 3001"; stub.last != want {
+		t.Fatalf("unscoped query should omit host.name: %s", stub.last)
+	}
+}
+
 func TestUnmappedSkipped(t *testing.T) {
 	// A metric the validator has no DB mapping for can't be ingest-checked.
 	s := ingest.Series{Metric: "oracledb.not_a_real_metric", Attrs: map[string]string{}, FirstValue: 1, FirstTS: 1_000_000_000, LastValue: 2, LastTS: 3_000_000_000, NPoints: 3}

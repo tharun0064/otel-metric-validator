@@ -19,15 +19,19 @@ import (
 	"github.com/newrelic-forks/otel-metric-validator/internal/metricmap"
 )
 
-// Emitted is one data point the collector emitted.
+// Emitted is one data point the collector emitted. Attrs are the data-point
+// attributes (used for the DB-check join); Resource holds the OTLP resource
+// attributes (host.name, oracledb.instance.name, …) used only to scope NRQL.
 type Emitted struct {
 	Metric       string
 	Attrs        map[string]string
+	Resource     map[string]string
 	Value        float64
 	TimeUnixNano int64
 }
 
-// Key returns the canonical (metric, attrs) join key.
+// Key returns the canonical (metric, attrs) join key. Resource attributes are
+// deliberately excluded so emitted points still join to DB-probe expectations.
 func (e Emitted) Key() string { return metricmap.Key(e.Metric, e.Attrs) }
 
 // Series captures the first and last emitted points for a (metric, attrs) series.
@@ -36,6 +40,7 @@ func (e Emitted) Key() string { return metricmap.Key(e.Metric, e.Attrs) }
 type Series struct {
 	Metric     string
 	Attrs      map[string]string
+	Resource   map[string]string
 	FirstValue float64
 	FirstTS    int64
 	LastValue  float64
@@ -50,8 +55,16 @@ func (s Series) Key() string { return metricmap.Key(s.Metric, s.Attrs) }
 // OTLP/JSON
 // ---------------------------------------------------------------------------
 
+type otlpAttr struct {
+	Key   string                     `json:"key"`
+	Value map[string]json.RawMessage `json:"value"`
+}
+
 type otlpPayload struct {
 	ResourceMetrics []struct {
+		Resource struct {
+			Attributes []otlpAttr `json:"attributes"`
+		} `json:"resource"`
 		ScopeMetrics []struct {
 			Scope struct {
 				Name string `json:"name"`
@@ -72,13 +85,10 @@ type otlpAgg struct {
 }
 
 type otlpDP struct {
-	Attributes []struct {
-		Key   string                     `json:"key"`
-		Value map[string]json.RawMessage `json:"value"`
-	} `json:"attributes"`
-	TimeUnixNano string   `json:"timeUnixNano"`
-	AsDouble     *float64 `json:"asDouble"`
-	AsInt        *string  `json:"asInt"`
+	Attributes   []otlpAttr `json:"attributes"`
+	TimeUnixNano string     `json:"timeUnixNano"`
+	AsDouble     *float64   `json:"asDouble"`
+	AsInt        *string    `json:"asInt"`
 }
 
 func attrValue(v map[string]json.RawMessage) string {
@@ -112,6 +122,10 @@ func iterOTLP(line []byte, fn func(Emitted)) {
 		return
 	}
 	for _, rm := range obj.ResourceMetrics {
+		resAttrs := make(map[string]string, len(rm.Resource.Attributes))
+		for _, a := range rm.Resource.Attributes {
+			resAttrs[a.Key] = attrValue(a.Value)
+		}
 		for _, sm := range rm.ScopeMetrics {
 			if !metricmap.ScopeMatches(sm.Scope.Name) {
 				continue
@@ -137,7 +151,7 @@ func iterOTLP(line []byte, fn func(Emitted)) {
 						attrs[a.Key] = attrValue(a.Value)
 					}
 					ts, _ := strconv.ParseInt(dp.TimeUnixNano, 10, 64)
-					fn(Emitted{m.Name, attrs, val, ts})
+					fn(Emitted{Metric: m.Name, Attrs: attrs, Resource: resAttrs, Value: val, TimeUnixNano: ts})
 				}
 			}
 		}
@@ -183,7 +197,11 @@ func ReadOTLPSeries(path string) (map[string]Series, error) {
 			k := pt.Key()
 			s, ok := series[k]
 			if !ok {
-				series[k] = Series{pt.Metric, pt.Attrs, pt.Value, pt.TimeUnixNano, pt.Value, pt.TimeUnixNano, 1}
+				series[k] = Series{
+					Metric: pt.Metric, Attrs: pt.Attrs, Resource: pt.Resource,
+					FirstValue: pt.Value, FirstTS: pt.TimeUnixNano,
+					LastValue: pt.Value, LastTS: pt.TimeUnixNano, NPoints: 1,
+				}
 				return
 			}
 			s.NPoints++
@@ -230,7 +248,7 @@ func ReadDebugLog(path string) (map[string]Emitted, error) {
 		for k, v := range curAttrs {
 			attrs[k] = v
 		}
-		pt := Emitted{curMetric, attrs, value, 0}
+		pt := Emitted{Metric: curMetric, Attrs: attrs, Value: value}
 		latest[pt.Key()] = pt
 	}
 
