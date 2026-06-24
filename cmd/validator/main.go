@@ -138,8 +138,12 @@ func runOnce(cfg config.Config, opt options) ([]compare.Result, []ingestcheck.Re
 
 	if opt.showQueries {
 		fmt.Fprintf(os.Stderr, "\n== DB calls (%s@%s:%d/%s) ==\n", cfg.User, cfg.Host, cfg.Port, cfg.Service)
-		for _, q := range probe.Queries {
-			fmt.Fprintln(os.Stderr, "  "+q)
+		for i, q := range probe.Queries {
+			label, sql, found := strings.Cut(q, ": ")
+			if !found {
+				label, sql = "query", q
+			}
+			fmt.Fprintf(os.Stderr, "  %d. %s\n       %s\n", i+1, label, sql)
 		}
 	}
 
@@ -162,9 +166,11 @@ func runOnce(cfg config.Config, opt options) ([]compare.Result, []ingestcheck.Re
 			ic = filterIngest(ingestcheck.Check(series, cfg), opt.metric)
 			if opt.showQueries {
 				fmt.Fprintf(os.Stderr, "\n== NRQL calls (%s) ==\n", cfg.NRNerdGraphURL)
+				n := 0
 				for _, r := range ic {
 					if r.NRQL != "" {
-						fmt.Fprintln(os.Stderr, "  "+r.NRQL)
+						n++
+						fmt.Fprintf(os.Stderr, "  %d. %s\n", n, r.NRQL)
 					}
 				}
 			}
