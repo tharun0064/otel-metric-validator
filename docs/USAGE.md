@@ -1,8 +1,9 @@
 # Using otel-metric-validator
 
-A practical, end-to-end guide. For the formal mapping/semantics see
-[`../specs/SPEC.md`](../specs/SPEC.md); for a high-level overview see
-[`../README.md`](../README.md).
+A practical, end-to-end guide. For *how* the comparison and delta math work (with
+a worked example, SQL, and NRQL) see [`COMPARISON.md`](COMPARISON.md); for the
+formal mapping/semantics see [`../specs/SPEC.md`](../specs/SPEC.md); for a
+high-level overview see [`../README.md`](../README.md).
 
 ---
 

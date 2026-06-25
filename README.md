@@ -19,7 +19,9 @@ receiver uses** (`github.com/sijms/go-ora/v2`, pure Go), so it negotiates Oracle
 Native Network Encryption with no Oracle Instant Client and no "thick mode".
 
 > **New here?** Start with the step-by-step guide:
-> [`docs/USAGE.md`](docs/USAGE.md). The formal mapping & semantics live in
+> [`docs/USAGE.md`](docs/USAGE.md). For how the three-way comparison and the delta
+> math work (with a worked example, SQL, and NRQL), see
+> [`docs/COMPARISON.md`](docs/COMPARISON.md). The formal mapping & semantics live in
 > [`specs/SPEC.md`](specs/SPEC.md).
 
 ## How it works
